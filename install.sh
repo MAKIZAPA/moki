@@ -302,5 +302,4 @@ echo -e "  • ${YELLOW}[a]${NC}                ➔ Alterna idioma de audio (Lat
 echo -e "  • ${YELLOW}[j]${NC}                ➔ Cambia subtítulos"
 echo -e "  • ${YELLOW}[Ctrl + 1 / 2]${NC}     ➔ Activa reescalado por Inteligencia Artificial (Anime4K)"
 echo -e ""
-echo -e "  ${PURPLE}💖 Agradecimiento especial: Gracias a mi novia por el nombre (Moki)${NC}"
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════════════════════════════${NC}\n"
