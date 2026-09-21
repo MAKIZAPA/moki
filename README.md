@@ -1,9 +1,5 @@
 <div align="center">
 
-  <img src="assets/banner.jpg" alt="MOKI Banner" width="100%" />
-
-  <br/><br/>
-
   <h1>モキ MOKI</h1>
 
   <p><b>La Streaming Suite de Terminal para Linux</b></p>
@@ -37,31 +33,31 @@
 <table>
   <tr>
     <td width="50%">
-      <h3><img src="assets/icons/zap.svg" width="18" height="18" align="center" /> Zero-Wear SSD (100% RAM)</h3>
+      <h4>⚡ Zero-Wear SSD (100% RAM)</h4>
       El búfer de streaming corre directamente en <code>/tmp</code> (memoria RAM), evitando cualquier desgaste o escritura en tu disco SSD.
     </td>
     <td width="50%">
-      <h3><img src="assets/icons/bookmark.svg" width="18" height="18" align="center" /> Fansub Memory</h3>
+      <h4>🔖 Fansub Memory</h4>
       Detecta y memoriza tu grupo de release preferido (ej. <code>VARYG</code>, <code>Puya</code>) y auto-encadena los siguientes capítulos sin prompts.
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3><img src="assets/icons/film.svg" width="18" height="18" align="center" /> Series & Películas en 4K</h3>
+      <h4>🎬 Series & Películas en 4K</h4>
       Catálogo verificado mediante Cinemeta y streams de Torrentio con soporte para Netflix, HBO Max, Disney+, Prime y cine.
     </td>
     <td width="50%">
-      <h3><img src="assets/icons/volume-2.svg" width="18" height="18" align="center" /> Filtro Estricto de Audio</h3>
+      <h4>🔊 Filtro Estricto de Audio</h4>
       Prioridad automática a pistas en <b>Español Latino</b> y <b>Castellano</b>. Bloqueo automático de seeds francesas mudas (<code>MULTi AD</code>).
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3><img src="assets/icons/fast-forward.svg" width="18" height="18" align="center" /> Modo Maratón & AniSkip</h3>
+      <h4>⏭️ Modo Maratón & AniSkip</h4>
       Salto de Opening automático gracias a la API v2 de AniSkip y cuenta regresiva desatendida entre episodios.
     </td>
     <td width="50%">
-      <h3><img src="assets/icons/cpu.svg" width="18" height="18" align="center" /> Multi-GPU Acelerada</h3>
+      <h4>💻 Multi-GPU Acelerada</h4>
       Aceleración por hardware en <b>NVIDIA</b> (NVDEC), <b>AMD Radeon</b> (RADV/VA-API) e <b>Intel</b> (ANV/VA-API) con shaders <b>Anime4K</b> por IA.
     </td>
   </tr>
