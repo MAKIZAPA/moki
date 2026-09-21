@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+import os
+import sys
+import json
+import time
+import subprocess
+
+HISTORY_FILE = os.path.expanduser("~/.config/streaming-cli/history.json")
+
+import re
+import shutil
+
+CYAN = "\033[0;36m"
+GREEN = "\033[0;32m"
+YELLOW = "\033[1;33m"
+PURPLE = "\033[0;35m"
+RED = "\033[0;31m"
+BOLD = "\033[1m"
+NC = "\033[0m"
+
+def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
+    if not shutil.which("fzf"):
+        return None, False
+    try:
+        cmd = [
+            "fzf",
+            "--ansi",
+            "--height=45%",
+            "--layout=reverse",
+            "--border",
+            f"--prompt={prompt}",
+            "--cycle"
+        ]
+        if header:
+            cmd.append(f"--header={header}")
+        p = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True
+        )
+        out, _ = p.communicate(input="\n".join(items_text))
+        if p.returncode == 0 and out.strip():
+            m = re.search(r"\[\s*(\d+)\s*\]", out)
+            if m:
+                return int(m.group(1)) - 1, True
+        elif p.returncode in (1, 130):
+            return None, True
+    except Exception:
+        pass
+    return None, False
+
+def format_seconds(secs):
+    secs = int(secs)
+    m = secs // 60
+    s = secs % 60
+    if m >= 60:
+        h = m // 60
+        m = m % 60
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+def progress_bar(percent, width=12):
+    percent = max(0, min(100, percent))
+    filled = int(round(width * percent / 100))
+    return "█" * filled + "░" * (width - filled)
+
+def load_history():
+    if not os.path.exists(HISTORY_FILE):
+        return {}
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def save_history(data):
+    try:
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+def main():
+    while True:
+        history = load_history()
+
+        # Filtrar y ordenar por fecha más reciente
+        items = []
+        for key, entry in history.items():
+            items.append((key, entry))
+
+        items.sort(key=lambda x: x[1].get("updated_at", 0), reverse=True)
+
+        print(f"\n{CYAN}{BOLD}╔══════════════════════════════════════════════════════════════╗{NC}")
+        print(f"{CYAN}{BOLD}║         🍿 CONTINUAR VIENDO (HISTORIAL DE REANUDACIÓN)       ║{NC}")
+        print(f"{CYAN}{BOLD}╚══════════════════════════════════════════════════════════════╝{NC}")
+
+        if not items:
+            print(f"  {YELLOW}ℹ️  Aún no tienes reproducciones registradas en tu historial.{NC}")
+            print(f"  {GREEN}Reproduce animes con '{BOLD}anime{NC}{GREEN}' o películas/series con '{BOLD}serie{NC}{GREEN}'.{NC}")
+            print(f"  {CYAN}Apenas cierres el reproductor, se guardará aquí el punto exacto.{NC}\n")
+            sys.exit(0)
+
+        # Preparar opciones para fzf
+        fzf_lines = []
+        for i, (key, it) in enumerate(items, 1):
+            m_type = it.get("type", "anime")
+            type_icon = "🎬 Anime" if m_type == "anime" else "📺 Serie" if m_type == "series" else "🍿 Película"
+            title = it.get("title", "Contenido")
+            ep = it.get("episode", 1)
+            season = it.get("season", 1)
+            next_ready = it.get("next_ready", False)
+            completed = it.get("completed", False)
+            time_pos = it.get("time_pos", 0)
+            duration = it.get("duration", 0)
+            percent = it.get("percent", 0)
+
+            if completed:
+                status_info = f"\033[0;32m✅ Completada al 100%\033[0m"
+            elif next_ready:
+                last_ep = it.get("last_completed_ep", ep - 1)
+                status_info = f"\033[1;33m🎉 Cap {last_ep} completado ➔ Siguiente: Cap {ep} (00:00)\033[0m"
+            else:
+                bar = progress_bar(percent, 8)
+                pos_str = format_seconds(time_pos)
+                dur_str = format_seconds(duration)
+                ep_label = f"T{season:02d}E{ep:02d}" if m_type == "series" else f"Cap {ep}" if m_type == "anime" else "Peli"
+                status_info = f"\033[1;33m⏱️ {ep_label} ({pos_str}/{dur_str} - {percent}%)\033[0m [{bar}]  ⏩ Reanudar en {pos_str}"
+
+            fzf_lines.append(f"\033[1;36m[{i:2d}]\033[0m \033[1;37m{title:<24s}\033[0m \033[0;36m[{type_icon}]\033[0m  {status_info}")
+
+        c_idx, used_fzf = select_with_fzf(
+            fzf_lines,
+            prompt="🍿 Reanudar: ",
+            header="Historial de reproducción | ↑↓ Navega | Escribe para buscar | Enter = Continuar | Esc = Salir"
+        )
+
+        selected = None
+        if used_fzf:
+            if c_idx is None:
+                sys.exit(0)
+            _, selected = items[c_idx]
+        else:
+            # Mostrar lista clásica si no se usa fzf
+            for i, (key, it) in enumerate(items, 1):
+                m_type = it.get("type", "anime")
+                type_icon = "🎬 Anime" if m_type == "anime" else "📺 Serie" if m_type == "series" else "🍿 Película"
+                title = it.get("title", "Contenido")
+                ep = it.get("episode", 1)
+                season = it.get("season", 1)
+                next_ready = it.get("next_ready", False)
+                completed = it.get("completed", False)
+                time_pos = it.get("time_pos", 0)
+                duration = it.get("duration", 0)
+                percent = it.get("percent", 0)
+
+                print(f"  {GREEN}[{i:2d}]{NC} {BOLD}{title}{NC}  {CYAN}[{type_icon}]{NC}")
+                if completed:
+                    print(f"       ✅ {GREEN}Completada al 100%{NC}\n")
+                elif next_ready:
+                    last_ep = it.get("last_completed_ep", ep - 1)
+                    print(f"       🎉 {GREEN}Capítulo {last_ep} completado{NC} ➔ ▶️  {YELLOW}{BOLD}Siguiente: Capítulo {ep} (00:00){NC}\n")
+                else:
+                    bar = progress_bar(percent)
+                    pos_str = format_seconds(time_pos)
+                    dur_str = format_seconds(duration)
+                    ep_label = f"T{season:02d}E{ep:02d}" if m_type == "series" else f"Capítulo {ep}" if m_type == "anime" else "Película"
+                    print(f"       ⏱️  {ep_label}  |  {pos_str} / {dur_str} ({percent}%)  [{bar}]")
+                    print(f"       ⏩ {YELLOW}Reanudar exactamente en el min {pos_str}{NC}\n")
+
+            print(f"{CYAN}────────────────────────────────────────────────────────────────{NC}")
+            print(f"  {YELLOW}Ingresa el número [1-{len(items)}] para continuar viendo{NC}")
+            print(f"  {RED}[d <núm>]{NC} Borrar del historial (ej. 'd 2')  |  {RED}[q]{NC} Salir\n")
+
+            try:
+                choice = input(f"{BOLD}Selección: {NC}").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\n")
+                sys.exit(0)
+
+            if not choice or choice.lower() in ("q", "quit", "exit"):
+                sys.exit(0)
+
+            if choice.lower().startswith("d ") or choice.lower().startswith("del "):
+                parts = choice.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    idx = int(parts[1]) - 1
+                    if 0 <= idx < len(items):
+                        del_key, del_item = items[idx]
+                        del history[del_key]
+                        save_history(history)
+                        print(f"{GREEN}🗑️  '{del_item.get('title')}' eliminado del historial.{NC}")
+                        continue
+
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(items):
+                    _, selected = items[idx]
+
+        if selected:
+            m_type = selected.get("type", "anime")
+            title = selected.get("title", "")
+            ep = selected.get("episode", 1)
+            season = selected.get("season", 1)
+            time_pos = selected.get("time_pos", 0)
+            next_ready = selected.get("next_ready", False)
+            magnet = selected.get("magnet", "")
+            size_gb = selected.get("size_gb", 0)
+            poster = selected.get("poster", "")
+            mal_id = selected.get("mal_id", 0)
+            file_idx = selected.get("file_idx", "")
+
+            env = os.environ.copy()
+            if not next_ready and time_pos > 10:
+                env["RESUME_START_TIME"] = str(int(time_pos))
+            else:
+                env["RESUME_START_TIME"] = "0"
+
+            # Si ya tenemos el magnet guardado y es una reanudación en curso (<90%), reproducir directo sin buscar
+            if not next_ready and magnet:
+                pos_str = format_seconds(time_pos)
+                print(f"\n{GREEN}⚡ Reanudando '{title}' al instante en el min {pos_str} (con seed recordada)...{NC}\n")
+                if m_type == "anime":
+                    cmd = [
+                        "anime",
+                        magnet,
+                        str(size_gb),
+                        title,
+                        f"Capítulo {ep}",
+                        poster,
+                        str(ep),
+                        str(int(time_pos)),
+                        str(mal_id),
+                        selected.get("group", ""),
+                        selected.get("release_title", "")
+                    ]
+                elif m_type == "series":
+                    cmd = [
+                        "serie",
+                        magnet,
+                        str(file_idx),
+                        str(size_gb),
+                        title,
+                        f"Episodio {ep}",
+                        poster,
+                        "series",
+                        str(season),
+                        str(ep),
+                        str(int(time_pos))
+                    ]
+                else:
+                    cmd = [
+                        "serie",
+                        magnet,
+                        str(file_idx),
+                        str(size_gb),
+                        title,
+                        "Película",
+                        poster,
+                        "movie",
+                        "1",
+                        "1",
+                        str(int(time_pos))
+                    ]
+            else:
+                # Si es un nuevo capítulo, pasar el grupo recordado para coincidencia automática
+                pref_grp = selected.get("group", "")
+                if not pref_grp and selected.get("release_title"):
+                    m1 = re.match(r"^\[(.*?)\]", selected.get("release_title", ""))
+                    if m1:
+                        pref_grp = m1.group(1).strip()
+                    else:
+                        m2 = re.search(r"-([A-Za-z0-9_]+)(?:\s*\(.*?\))?$", selected.get("release_title", ""))
+                        if m2:
+                            pref_grp = m2.group(1).strip()
+
+                if pref_grp:
+                    env["PREF_GROUP"] = pref_grp
+                    print(f"\n{GREEN}🚀 Buscando automáticamente Capítulo {ep} de '{title}' (Release: {pref_grp})...{NC}\n")
+                else:
+                    print(f"\n{GREEN}🚀 Buscando semillas para '{title}' Capítulo {ep}...{NC}\n")
+
+                if m_type == "anime":
+                    cmd = ["anime", title, str(ep)]
+                elif m_type == "series":
+                    cmd = ["serie", title, str(season), str(ep)]
+                else:
+                    cmd = ["serie", title]
+
+            subprocess.run(cmd, env=env)
+            break
+        else:
+            print(f"{RED}Opción no válida.{NC}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,105 @@
+#!/home/makizapa/.local/share/anime-cli/venv/bin/python3
+import os
+import sys
+import time
+import subprocess
+import re
+import speech_recognition as sr
+
+def log(msg="", end="\n"):
+    sys.stderr.write(f"{msg}{end}")
+    sys.stderr.flush()
+
+SPANISH_NUMS = {
+    "uno": "1", "dos": "2", "tres": "3", "cuatro": "4", "cinco": "5",
+    "seis": "6", "siete": "7", "ocho": "8", "nueve": "9", "diez": "10",
+    "once": "11", "doce": "12", "trece": "13", "catorce": "14", "quince": "15",
+    "dieciséis": "16", "dieciseis": "16", "diecisiete": "17", "dieciocho": "18", "diecinueve": "19",
+    "veinte": "20", "veintiuno": "21", "veintidos": "22", "veintidós": "22", "veintitres": "23", "veintitrés": "23", "veinticuatro": "24", "veinticinco": "25"
+}
+
+def clean_voice_text(text):
+    text = text.strip()
+    for word, digit in SPANISH_NUMS.items():
+        pattern = r"\b" + word + r"\b"
+        text = re.sub(pattern, digit, text, flags=re.IGNORECASE)
+    return text
+
+def record_audio(output_file, duration=4):
+    log("\n\033[1;36m╔══════════════════════════════════════════════════════════════╗\033[0m")
+    log("\033[1;36m║                  🎙️  BÚSQUEDA POR VOZ                        ║\033[0m")
+    log("\033[1;36m╚══════════════════════════════════════════════════════════════╝\033[0m")
+    log("\033[1;33m👉 Prepárate para hablar (ej. 'Dandadan 1' o 'Chainsaw Man')...\033[0m")
+    time.sleep(0.5)
+
+    cmd = [
+        "ffmpeg", "-loglevel", "quiet",
+        "-f", "pulse", "-i", "default",
+        "-t", str(duration),
+        "-ar", "16000", "-ac", "1",
+        "-y", output_file
+    ]
+    proc = subprocess.Popen(cmd)
+
+    log("\033[1;31m🔴 GRABANDO: \033[1;37m", end="")
+    for i in range(duration):
+        log(f"[{duration - i}s...] ", end="")
+        time.sleep(1)
+    proc.wait()
+    log("\033[0;32m¡Listo!\033[0m\n")
+
+def transcribe(audio_file):
+    log("\033[0;36m⚙️  Reconociendo voz...\033[0m")
+    r = sr.Recognizer()
+    try:
+        with sr.AudioFile(audio_file) as source:
+            audio = r.record(source)
+        text = r.recognize_google(audio, language="es-419")
+        return text
+    except sr.UnknownValueError:
+        return None
+    except sr.RequestError as e:
+        log(f"\033[0;31mError al conectar con el servicio de voz: {e}\033[0m")
+        return None
+    except Exception as e:
+        log(f"\033[0;31mError: {e}\033[0m")
+        return None
+
+def main():
+    wav_path = "/tmp/anime_voice_input.wav"
+    try:
+        record_audio(wav_path, duration=4)
+        raw_text = transcribe(wav_path)
+        
+        if not raw_text:
+            log("\033[0;31m⚠️ No se detectó ninguna voz o no se entendió.\033[0m")
+            log("\033[1;33mPuedes escribir el anime manualmente si lo deseas: \033[0m", end="")
+            manual = sys.stdin.readline().strip()
+            if manual and manual.lower() not in ('q', 'quit', 'exit'):
+                print(manual)
+                sys.stdout.flush()
+            sys.exit(0)
+
+        cleaned = clean_voice_text(raw_text)
+        log(f"\n\033[1;32m✓ Escuché: \033[1;37m\"{cleaned}\"\033[0m")
+        log("\033[1;33mPresiona [Enter] para buscar, escribe para corregir, o 'q' para salir: \033[0m", end="")
+        confirm = sys.stdin.readline().strip()
+
+        if confirm.lower() in ('q', 'quit', 'exit'):
+            sys.exit(0)
+        elif confirm == "":
+            print(cleaned)
+            sys.stdout.flush()
+        else:
+            print(confirm)
+            sys.stdout.flush()
+
+    finally:
+        if os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# ==========================================================
+# CLI Anime Streamer (Búsqueda por texto, voz, webtorrent, mpv)
+# ==========================================================
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+STREAM_BIN="webtorrent"
+SEARCH_SCRIPT="$HOME/.local/bin/anime-search"
+VOICE_SCRIPT="$HOME/.local/bin/anime-voice"
+
+# Limpieza preventiva y de cierre (para que no quede NINGÚN archivo residual)
+cleanup() {
+    rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/current_media.json "$HOME/.cache/webtorrent" 2>/dev/null
+}
+trap cleanup EXIT INT TERM
+
+# Función para reproducir enlace
+play_stream() {
+    local target="$1"
+    local size_gb="${2:-0}"
+    local title="$3"
+    local episode="$4"
+    local poster="$5"
+    local ep_num="${6:-1}"
+    local start_time="${7:-${RESUME_START_TIME:-0}}"
+    local mal_id="${8:-0}"
+    local group="${9:-}"
+    local release_title="${10:-}"
+    local interactive_flag=""
+    local out_dir="/tmp/webtorrent"
+
+    # Limpieza de carpetas de streaming previas
+    rm -rf /tmp/webtorrent* /tmp/torrent-stream* "$HOME/.cache/webtorrent" 2>/dev/null
+
+    # Escribir metadatos limpios, póster y tiempo de inicio para Discord, MPV y AniSkip
+    if [ -n "$title" ]; then
+        cat <<EOF > /tmp/current_media.json
+{
+  "title": "$title",
+  "type": "anime",
+  "season": 1,
+  "episode": "$episode",
+  "episode_num": $ep_num,
+  "start_time": $start_time,
+  "poster": "$poster",
+  "mal_id": $mal_id,
+  "magnet": "$target",
+  "size_gb": "$size_gb",
+  "group": "$group",
+  "release_title": "$release_title"
+}
+EOF
+    fi
+
+    # Buffer inteligente:
+    # Si pesa >= 6 GB, usamos SSD (~/.cache/webtorrent) para evitar desbordar los 7.8 GB de RAM (/tmp)
+    # Si pesa < 6 GB, usamos RAM pura (/tmp/webtorrent) para cero desgaste de disco
+    local int_size="${size_gb%%.*}"
+    if [[ "$int_size" =~ ^[0-9]+$ ]] && [ "$int_size" -ge 6 ]; then
+        if [ "$int_size" -gt 30 ]; then
+            echo -e "${RED}⚠️  El archivo (${size_gb} GB) supera el tope máximo de seguridad de 30 GB configurado.${NC}"
+            echo -e "${YELLOW}Selecciona una opción más ligera de la lista para no saturar tu disco.${NC}"
+            return 1
+        fi
+        out_dir="$HOME/.cache/webtorrent"
+        mkdir -p "$out_dir"
+        echo -e "${YELLOW}💾 Archivo grande (~${int_size} GB): Usando buffer temporal en disco (~/.cache/webtorrent).${NC}"
+        echo -e "${YELLOW}   🛡️  Se eliminará automáticamente al 100% apenas termines de ver.${NC}"
+    else
+        echo -e "${GREEN}⚡ Archivo optimizado: Buffer 100% en memoria RAM (/tmp). Cero desgaste en tu SSD.${NC}"
+    fi
+
+    local interactive_flag="${INTERACTIVE_FLAG:-}"
+
+    echo -e "\n${GREEN}🚀 Conectando y cargando stream en mpv...${NC}"
+    echo -e "${YELLOW}Atajos: [TAB] Salta Opening (AniSkip) | [Shift+N] Siguiente cap | [Ctrl+1] IA Anime4K | [q] Salir${NC}\n"
+
+    $STREAM_BIN "$target" -o "$out_dir" --mpv $interactive_flag
+
+    echo -e "\n${GREEN}🧹 Limpieza automática: Eliminando buffer y archivos temporales... ¡Listo!${NC}"
+    rm -rf /tmp/webtorrent* /tmp/torrent-stream* "$HOME/.cache/webtorrent" 2>/dev/null
+}
+
+# Ejecutar búsqueda y reproducir (con bucle de Modo Maratón)
+run_search_and_play() {
+    local current_query="$@"
+
+    while true; do
+        rm -f /tmp/marathon_next.json
+        local output
+        output=$("$SEARCH_SCRIPT" $current_query)
+
+        local magnet
+        local size_gb
+        local title
+        local episode
+        local poster
+        local ep_num
+        local mal_id
+        local group
+        local release_title
+
+        magnet=$(echo "$output" | grep "^MAGNET:" | head -n1 | cut -d':' -f2-)
+        size_gb=$(echo "$output" | grep "^SIZE_GB:" | head -n1 | cut -d':' -f2-)
+        title=$(echo "$output" | grep "^TITLE:" | head -n1 | cut -d':' -f2-)
+        episode=$(echo "$output" | grep "^EPISODE:" | head -n1 | cut -d':' -f2-)
+        ep_num=$(echo "$output" | grep "^EPISODE_NUM:" | head -n1 | cut -d':' -f2-)
+        poster=$(echo "$output" | grep "^POSTER:" | head -n1 | cut -d':' -f2-)
+        mal_id=$(echo "$output" | grep "^MAL_ID:" | head -n1 | cut -d':' -f2-)
+        group=$(echo "$output" | grep "^GROUP:" | head -n1 | cut -d':' -f2-)
+        release_title=$(echo "$output" | grep "^RELEASE_TITLE:" | head -n1 | cut -d':' -f2-)
+
+        [ -z "$ep_num" ] && ep_num=1
+        [ -z "$mal_id" ] && mal_id=0
+        local start_time="${RESUME_START_TIME:-0}"
+        RESUME_START_TIME=0
+
+        if [ -z "$magnet" ]; then
+            magnet=$(echo "$output" | grep -v "^SIZE_" | grep -v "^TITLE:" | grep -v "^EPISODE:" | grep -v "^EPISODE_NUM:" | grep -v "^TYPE:" | grep -v "^POSTER:" | grep -v "^MAL_ID:" | grep -v "^GROUP:" | grep -v "^RELEASE_TITLE:" | tr -d '\r\n')
+        fi
+
+        if [ -n "$magnet" ]; then
+            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title"
+        else
+            break
+        fi
+
+        # Comprobar si Modo Maratón solicitó el siguiente capítulo
+        if [ -f /tmp/marathon_next.json ]; then
+            local next_ep
+            local next_title
+            next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
+            next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
+            rm -f /tmp/marathon_next.json
+
+            if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
+                echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${CYAN}${BOLD}║  🍿 MODO MARATÓN: Cargando Capítulo ${next_ep} de ${next_title}...   ║${NC}"
+                echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+                current_query="$next_title $next_ep"
+                # Recordar el grupo de fansub (ej. VARYG, AnoZu, etc.) para emparejamiento automático
+                if [ -n "$group" ]; then
+                    export PREF_GROUP="$group"
+                fi
+                continue
+            fi
+        fi
+        break
+    done
+
+    cleanup
+}
+
+# Ayuda
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo -e "${CYAN}${BOLD}Uso de 'anime':${NC}"
+    echo -e "  ${GREEN}anime${NC}                                 Menú principal interactivo"
+    echo -e "  ${GREEN}anime voz${NC}                             Buscar hablando por el micrófono 🎙️"
+    echo -e "  ${GREEN}anime buscar <nombre> [capítulo]${NC}      Busca por texto (ej. anime buscar Dandadan 1)"
+    echo -e "  ${GREEN}anime \"<enlace_magnet>\"${NC}               Reproduce el magnet directamente"
+    echo -e "  ${GREEN}anime -i \"<enlace_magnet>\"${NC}            Modo interactivo (elegir capítulo si es pack)"
+    exit 0
+fi
+
+# Soporte para modo interactivo explícito por parámetro: anime -i "<magnet>"
+if [[ "$1" == "-i" ]]; then
+    export INTERACTIVE_FLAG="-i"
+    shift
+fi
+
+# Modo voz directa: anime voz / anime voice / anime -v
+if [[ "$1" == "voz" || "$1" == "voice" || "$1" == "-v" ]]; then
+    VOICE_QUERY=$("$VOICE_SCRIPT")
+    if [ -n "$VOICE_QUERY" ]; then
+        run_search_and_play "$VOICE_QUERY"
+    fi
+    exit 0
+fi
+
+# Modo búsqueda por texto: anime buscar <nombre> / anime -s <nombre>
+if [[ "$1" == "buscar" || "$1" == "search" || "$1" == "-s" ]]; then
+    shift
+    run_search_and_play "$@"
+    exit 0
+fi
+
+# Si pasaron un enlace magnet o archivo torrent directo
+if [[ "$1" == magnet:\?* || "$1" == *.torrent || "$1" == http://* || "$1" == https://* ]]; then
+    play_stream "$@"
+    exit 0
+fi
+
+# Si pasaron argumentos directos: anime "Dandadan" 1
+if [[ -n "$1" ]]; then
+    run_search_and_play "$@"
+    exit 0
+fi
+
+# Menú principal si solo escribieron "anime"
+echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}${BOLD}║       🎬 REPRODUCTOR DE ANIME 1080p (CachyOS + mpv)         ║${NC}"
+echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo -e "  ${GREEN}[1]${NC} 🔍 Buscar anime por texto (con Doblaje Latino / Español)"
+echo -e "  ${CYAN}[2]${NC} 🎙️  Buscar anime por VOZ (habla por el micrófono)"
+echo -e "  ${YELLOW}[3]${NC} 🧲 Pegar enlace magnet o archivo .torrent directo"
+echo -e "  ${YELLOW}[4]${NC} ⏩ Continuar viendo anime en progreso"
+echo -e "  ${RED}[q]${NC} Salir\n"
+
+read -p "Elige una opción [1]: " MENU_CHOICE
+
+if [[ "$MENU_CHOICE" == "2" || "$MENU_CHOICE" == "v" || "$MENU_CHOICE" == "voz" ]]; then
+    VOICE_QUERY=$("$VOICE_SCRIPT")
+    if [ -n "$VOICE_QUERY" ]; then
+        run_search_and_play "$VOICE_QUERY"
+    fi
+elif [[ "$MENU_CHOICE" == "3" ]]; then
+    read -p "Pega el enlace magnet o arrastra el archivo torrent: " DIRECT_TARGET
+    if [ -n "$DIRECT_TARGET" ]; then
+        play_stream "$DIRECT_TARGET"
+    fi
+elif [[ "$MENU_CHOICE" == "4" || "$MENU_CHOICE" == "c" || "$MENU_CHOICE" == "continuar" ]]; then
+    exec "$HOME/.local/bin/continuar"
+elif [[ "$MENU_CHOICE" == "q" || "$MENU_CHOICE" == "Q" ]]; then
+    exit 0
+else
+    # Opción 1 (Buscar por texto)
+    run_search_and_play
+fi

@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# ==========================================================
+# ✨ MOKI - Tu Streaming Suite de Terminal (mpv + P2P)
+# Autor: makizapa
+# ==========================================================
+
+VERSION="1.0.0"
+
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+PURPLE='\033[0;35m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+show_banner() {
+    clear 2>/dev/null || true
+    echo -e "${CYAN}${BOLD}"
+    echo "  __  __  ___  _  _____ "
+    echo " |  \/  |/ _ \| |/ /_ _|"
+    echo " | |\/| | | | | ' / | | "
+    echo " | |  | | |_| | . \ | | "
+    echo " |_|  |_|\___/|_|\_\___|"
+    echo -e "${NC}"
+    echo -e "${PURPLE}${BOLD} 📺 Streaming Suite de Terminal (Anime • Series • Películas)${NC}"
+    echo -e "${BLUE} Creado por: ${YELLOW}makizapa${BLUE} • v${VERSION}${NC}"
+    echo -e "${CYAN}────────────────────────────────────────────────────────────────${NC}"
+}
+
+show_menu() {
+    show_banner
+    echo -e "  ${GREEN}[1]${NC} 🎌  ${BOLD}Anime${NC} (Nyaa, Doblaje Latino, AniSkip, Anime4K)"
+    echo -e "  ${CYAN}[2]${NC} 🍿  ${BOLD}Series${NC} (Netflix, HBO, Disney, Amazon, 1080p/4K)"
+    echo -e "  ${YELLOW}[3]${NC} 🎬  ${BOLD}Películas${NC} (Estrenos, 4K HDR, Castellano/Latino)"
+    echo -e "  ${PURPLE}[4]${NC} ⏩  ${BOLD}Continuar viendo${NC} (Historial y reanudación exacta)"
+    echo -e "  ${BLUE}[5]${NC} 🎙️   ${BOLD}Búsqueda por VOZ${NC} (Habla por el micrófono)"
+    echo -e "  ${RED}[6]${NC} 🧹  ${BOLD}Limpiar caché y RAM${NC}"
+    echo -e "  ${RED}[q]${NC} 🚪  Salir\n"
+    echo -e "  ${PURPLE}💖 Gracias a mi novia por el nombre (Moki)${NC}\n"
+
+    read -p " Elige una opción [1]: " OPTION
+
+    case "$OPTION" in
+        1|"anime"|"a")
+            exec anime
+            ;;
+        2|"serie"|"series"|"s")
+            exec serie
+            ;;
+        3|"pelis"|"peli"|"peliculas"|"p")
+            exec pelis
+            ;;
+        4|"continuar"|"c")
+            exec continuar
+            ;;
+        5|"voz"|"v")
+            exec anime voz
+            ;;
+        6|"limpiar"|"l")
+            limpiar
+            limpiar-ram
+            echo -e "\n${GREEN}Presiona Enter para volver al menú...${NC}"
+            read -r
+            show_menu
+            ;;
+        q|Q|"salir"|"exit")
+            exit 0
+            ;;
+        *)
+            # Por defecto opción 1 (Anime)
+            exec anime
+            ;;
+    esac
+}
+
+show_help() {
+    echo -e "${CYAN}${BOLD}Uso de 'moki':${NC}"
+    echo -e "  ${GREEN}moki${NC}                                 Abre el menú principal de streaming"
+    echo -e "  ${GREEN}moki anime <nombre> [capítulo]${NC}       Busca anime en Nyaa"
+    echo -e "  ${GREEN}moki serie <nombre> [temp] [cap]${NC}     Busca series en Cinemeta/Torrentio"
+    echo -e "  ${GREEN}moki pelis <nombre>${NC}                  Busca películas directo en Cinemeta"
+    echo -e "  ${GREEN}moki continuar${NC}                       Abre tu historial de reanudación"
+    echo -e "  ${GREEN}moki voz${NC}                             Búsqueda directa por micrófono"
+    echo -e "  ${GREEN}moki limpiar${NC}                         Limpia buffers temporales y RAM"
+    echo -e "  ${GREEN}moki -v, --version${NC}                   Muestra la versión instalada"
+    echo -e "  ${GREEN}moki -h, --help${NC}                      Muestra esta ayuda"
+    echo -e "\n${PURPLE}${BOLD}Atajos dentro del reproductor (mpv):${NC}"
+    echo -e "  ${YELLOW}[Shift + N]${NC}                          Siguiente capítulo (Modo Maratón)"
+    echo -e "  ${YELLOW}[TAB]${NC}                                Saltar Opening automático (AniSkip)"
+    echo -e "  ${YELLOW}[a] o [#]${NC}                            Alternar idioma de audio (Latino/Japonés)"
+    echo -e "  ${YELLOW}[j]${NC}                                  Alternar subtítulos"
+    echo -e "  ${YELLOW}[Ctrl + 1 / 2]${NC}                       Reescalado por IA Anime4K (HQ / Rápido)"
+    echo -e "  ${YELLOW}[f]${NC}                                  Pantalla completa"
+    echo -e "  ${YELLOW}[q]${NC}                                  Guardar progreso y salir"
+}
+
+# Subcomandos directos
+case "$1" in
+    anime|a)
+        shift
+        exec anime "$@"
+        ;;
+    serie|series|s)
+        shift
+        exec serie "$@"
+        ;;
+    pelis|peli|p)
+        shift
+        exec pelis "$@"
+        ;;
+    continuar|c)
+        exec continuar
+        ;;
+    voz|voice|v)
+        exec anime voz
+        ;;
+    limpiar|clean|l)
+        limpiar
+        limpiar-ram
+        exit 0
+        ;;
+    -v|--version|version)
+        echo -e "${CYAN}moki${NC} versión ${GREEN}${VERSION}${NC} - Streaming Suite de Terminal"
+        exit 0
+        ;;
+    -h|--help|help)
+        show_help
+        exit 0
+        ;;
+    "")
+        show_menu
+        ;;
+    *)
+        # Si pasaron texto no reconocido, asumir búsqueda de anime o serie
+        echo -e "${YELLOW}Comando no reconocido. Iniciando menú principal...${NC}"
+        sleep 0.5
+        show_menu
+        ;;
+esac

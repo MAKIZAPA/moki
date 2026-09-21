@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+import os
+import sys
+import re
+import urllib.request
+import urllib.parse
+import json
+import xml.etree.ElementTree as ET
+
+def get_anime_meta(anime_name):
+    # Formatear con mayúsculas iniciales por defecto (ej. "black torch" -> "Black Torch")
+    clean_title = anime_name.strip().title()
+    poster = ""
+    mal_id = 0
+
+    # 1. Consulta rápida a AniList GraphQL (proporciona mal_id directo para AniSkip y póster HD)
+    try:
+        query = '''
+        query ($search: String) {
+            Media(search: $search, type: ANIME) {
+                idMal
+                title { romaji english }
+                coverImage { extraLarge large }
+            }
+        }
+        '''
+        payload = json.dumps({'query': query, 'variables': {'search': anime_name}}).encode('utf-8')
+        req = urllib.request.Request(
+            'https://graphql.anilist.co',
+            data=payload,
+            headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            media = data.get("data", {}).get("Media")
+            if media:
+                mal_id = media.get("idMal") or 0
+                titles = media.get("title", {})
+                canonical = titles.get("romaji") or titles.get("english")
+                if canonical:
+                    clean_title = canonical
+                images = media.get("coverImage", {})
+                poster = images.get("extraLarge") or images.get("large") or ""
+    except Exception:
+        pass
+
+    # 2. Fallback a Kitsu si no se obtuvo póster o información
+    if not poster:
+        try:
+            url = f"https://kitsu.io/api/edge/anime?filter[text]={urllib.parse.quote(anime_name)}&page[limit]=1"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read())
+                if data.get("data") and len(data["data"]) > 0:
+                    attr = data["data"][0]["attributes"]
+                    canonical = attr.get("canonicalTitle")
+                    if canonical:
+                        clean_title = canonical.title() if canonical.isupper() else canonical
+                    poster = attr.get("posterImage", {}).get("medium", "")
+        except Exception:
+            pass
+
+    return clean_title, poster, mal_id
+
+def log(msg="", end="\n"):
+    sys.stderr.write(f"{msg}{end}")
+    sys.stderr.flush()
+
+def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
+    import shutil
+    import subprocess
+    if not shutil.which("fzf"):
+        return None, False
+    try:
+        cmd = [
+            "fzf",
+            "--ansi",
+            "--height=45%",
+            "--layout=reverse",
+            "--border",
+            f"--prompt={prompt}",
+            "--cycle"
+        ]
+        if header:
+            cmd.append(f"--header={header}")
+        p = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True
+        )
+        out, _ = p.communicate(input="\n".join(items_text))
+        if p.returncode == 0 and out.strip():
+            m = re.search(r"\[\s*(\d+)\s*\]", out)
+            if m:
+                return int(m.group(1)) - 1, True
+        elif p.returncode in (1, 130):
+            return None, True
+    except Exception:
+        pass
+    return None, False
+
+def fetch_nyaa(query, category="0_0"):
+    url = f"https://nyaa.si/?page=rss&q={urllib.parse.quote(query)}&c={category}&f=0"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            root = ET.fromstring(resp.read())
+            items = []
+            channel = root.find("channel")
+            if channel is None:
+                return []
+            for item in channel.findall("item"):
+                title = item.findtext("title", "")
+                link = item.findtext("link", "")
+                size = item.findtext("{https://nyaa.si/xmlns/nyaa}size", "N/A")
+                seeders_text = item.findtext("{https://nyaa.si/xmlns/nyaa}seeders", "0")
+                try:
+                    seeders = int(seeders_text)
+                except ValueError:
+                    seeders = 0
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "size": size,
+                    "seeders": seeders
+                })
+            return items
+    except Exception:
+        return []
+
+def extract_group(raw_title):
+    m1 = re.match(r"^\[(.*?)\]", raw_title)
+    if m1:
+        return m1.group(1).strip()
+    m2 = re.search(r"-([A-Za-z0-9_]+)(?:\s*\(.*?\))?$", raw_title)
+    if m2:
+        return m2.group(1).strip()
+    return ""
+
+def is_french(title):
+    low = title.lower()
+    # Si contiene explícitamente latino o español, no descartar
+    if any(k in low for k in ["latino", "español", "espanol", "castellano"]):
+        return False
+    # Releases francesas que suelen causar audios mudos (Audio Description) o doblaje francés
+    return bool(re.search(r"\b(vostfr|vf|french|subfrench|truefrench)\b|multi[\s\.]ad|-kaf\b|tsundere-raws", low))
+
+def classify_audio(title):
+    low = title.lower()
+    # 1. Castellano / España específico
+    if any(k in low for k in ["castellano", "españa", "espana"]) and not any(k in low for k in ["latino", "audio latino"]):
+        return "ESP_ESP"
+
+    # 2. Doblaje Latino / Multi-Audio con pista en español / Fansub dedicado
+    es_lat_keywords = [
+        "latino", "audio latino", "audio_latino", "doblaje", "doblajes",
+        "puya", "puyasubs", "hispamux", "kakumei", "kashikoi", "sub_esp", "sub esp", "sub-esp",
+        "multi-audio", "multi audio"
+    ]
+    if any(k in low for k in es_lat_keywords) or re.search(r"(\[|\()(lat|esp)(\]|\))", low) or "español" in low or "espanol" in low:
+        return "LATINO"
+    
+    return "GLOBAL"
+
+def extract_episode(query):
+    query = query.strip()
+    m = re.search(r"^(.*?)(?:\s+(?:cap[íi]tulo|cap|ep|episodio|e)?\s*(\d{1,4}))\s*$", query, re.IGNORECASE)
+    if m and m.group(1).strip():
+        name = m.group(1).strip()
+        ep = int(m.group(2))
+        return name, ep
+    return query, None
+
+def main():
+    if len(sys.argv) < 2:
+        log("\033[1;33m🔍 Nombre del anime: \033[0m", end="")
+        raw_name = sys.stdin.readline().strip()
+        if not raw_name:
+            log("\033[0;31mNo se ingresó ningún término de búsqueda.\033[0m")
+            sys.exit(1)
+        
+        # Comprobar si ya puso el capítulo en el nombre (ej. Dandadan 1)
+        name, ep = extract_episode(raw_name)
+        if ep is None:
+            log("\033[1;33m🔢 Capítulo (opcional, ej. 1, 05 o Enter para todos): \033[0m", end="")
+            ep_input = sys.stdin.readline().strip()
+            if ep_input.isdigit():
+                ep = int(ep_input)
+    else:
+        full_query = " ".join(sys.argv[1:]).strip()
+        name, ep = extract_episode(full_query)
+
+    if not name:
+        log("\033[0;31mNombre de anime no válido.\033[0m")
+        sys.exit(1)
+
+    queries = []
+    if ep is not None:
+        ep_pad = f"{ep:02d}"
+        ep_num = str(ep)
+        log(f"\n\033[0;36m🔎 Buscando '{name}' Capítulo {ep_pad} (Español / Latino)...\033[0m")
+        queries = [
+            (f"{name} S01E{ep_pad}", "0_0"),
+            (f"{name} {ep_pad} Latino", "0_0"),
+            (f"{name} {ep_pad} Español", "0_0"),
+            (f"{name} E{ep_pad} Latino", "0_0"),
+            (f"Puya {name} {ep_pad}", "0_0"),
+            (f"{name} - {ep_pad}", "0_0"),
+            (f"{name} {ep_pad}", "0_0"),
+            (f"{name} {ep_pad}", "1_3"),
+            (f"{name} {ep_num}", "0_0"),
+            (f"{name} Latino", "0_0")
+        ]
+    else:
+        log(f"\n\033[0;36m🔎 Buscando '{name}' en Nyaa (Español / Latino)...\033[0m")
+        queries = [
+            (f"{name} Latino", "0_0"),
+            (f"{name} Español", "0_0"),
+            (f"Puya {name}", "0_0"),
+            (name, "1_3"),
+            (name, "0_0")
+        ]
+
+    seen = set()
+    spanish_results = []
+    other_results = []
+
+    for q_str, cat in queries:
+        items = fetch_nyaa(q_str, cat)
+        for item in items:
+            if item["link"] not in seen:
+                seen.add(item["link"])
+                # Filtrar releases francesas que producen audios mudos o solo francés
+                if is_french(item["title"]):
+                    continue
+                cls = classify_audio(item["title"])
+                item["cls"] = cls
+                if cls in ("LATINO", "ESP_ESP"):
+                    spanish_results.append(item)
+                else:
+                    other_results.append(item)
+
+    # Ordenar por semillas para asegurar streaming rápido
+    spanish_results.sort(key=lambda x: x["seeders"], reverse=True)
+    other_results.sort(key=lambda x: x["seeders"], reverse=True)
+
+    # Prioridad absoluta a las que tienen audio en Español / Latino
+    final_list = (spanish_results + other_results)[:15]
+
+    if not final_list:
+        log(f"\033[0;31mNo se encontraron resultados para '{name}'" + (f" capítulo {ep}" if ep else "") + ".\033[0m")
+        sys.exit(1)
+
+    header = f"{name} - Cap {ep}" if ep else name
+    fzf_lines = []
+    for i, item in enumerate(final_list, 1):
+        color_seed = "\033[0;32m" if item["seeders"] > 5 else "\033[1;33m" if item["seeders"] > 0 else "\033[0;31m"
+        cls = item.get("cls", "GLOBAL")
+        if cls == "LATINO":
+            tag = "\033[1;32m[ESPAÑOL/LATINO]\033[0m"
+        elif cls == "ESP_ESP":
+            tag = "\033[1;33m[ESPAÑOL (ESPAÑA)]\033[0m"
+        else:
+            tag = "\033[0;34m[GLOBAL]\033[0m"
+        line = f"\033[1;36m[{i:2d}]\033[0m {tag} {color_seed}🌱 {item['seeders']:3d} seeds\033[0m  📦 \033[0;35m{item['size']:>9s}\033[0m  \033[1;37m{item['title']}\033[0m"
+        fzf_lines.append(line)
+
+    pref_group = os.environ.get("PREF_GROUP", "").strip().lower()
+    selected = None
+
+    # Si hay un grupo de fansub recordado del capítulo anterior, intentar coincidencia automática sin pedir input
+    if pref_group:
+        for item in final_list:
+            if pref_group in item["title"].lower() and item["seeders"] > 0:
+                log(f"\n\033[1;32m🎯 ¡Coincidencia automática encontrada del grupo '{pref_group.upper()}'!\033[0m")
+                log(f"\033[0;36m   ➔ {item['title']} (🌱 {item['seeders']} seeds)\033[0m\n")
+                selected = item
+                break
+
+    if not selected:
+        choice_idx, used_fzf = select_with_fzf(
+            fzf_lines,
+            prompt="🔎 Filtrar versión: ",
+            header=f"Resultados: {header} | ↑↓ Moverse | Escribe para buscar (ej. latino, 1080p, puya) | Enter = Ver | Esc = Salir"
+        )
+
+        if used_fzf:
+            if choice_idx is None:
+                sys.exit(0)
+            selected = final_list[choice_idx]
+        else:
+            log("\n\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m")
+            log(f"\033[1;37m Resultados para: \033[1;33m{header}\033[0m")
+            log("\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m\n")
+            for line in fzf_lines:
+                log(f"  {line}\n")
+            log("\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m")
+
+            while True:
+                log("\033[1;33mSelecciona el número a reproducir (o 'q' para salir): \033[0m", end="")
+                choice = sys.stdin.readline().strip()
+                if choice.lower() in ('q', 'quit', 'exit', ''):
+                    sys.exit(0)
+                if choice.isdigit() and 1 <= int(choice) <= len(final_list):
+                    selected = final_list[int(choice) - 1]
+                    break
+                log("\033[0;31mOpción no válida. Ingresa un número de la lista.\033[0m")
+
+    if selected:
+        size_gb = 0.0
+        m_sz = re.search(r"([\d\.]+)\s*(GB|GiB|MB|MiB)", selected.get("size", ""), re.IGNORECASE)
+        if m_sz:
+            val = float(m_sz.group(1))
+            unit = m_sz.group(2).upper()
+            if "M" in unit:
+                size_gb = val / 1024.0
+            else:
+                size_gb = val
+        title_clean, poster, mal_id = get_anime_meta(name)
+        group = extract_group(selected['title'])
+        print(f"MAGNET:{selected['link']}")
+        print(f"SIZE_GB:{size_gb:.2f}")
+        print(f"TITLE:{title_clean}")
+        print(f"TYPE:anime")
+        print(f"EPISODE_NUM:{ep if ep is not None else 1}")
+        print(f"MAL_ID:{mal_id}")
+        print(f"GROUP:{group}")
+        print(f"RELEASE_TITLE:{selected['title']}")
+        if ep is not None:
+            print(f"EPISODE:Episodio {ep}")
+        else:
+            print("EPISODE:Anime")
+        if poster:
+            print(f"POSTER:{poster}")
+        sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()
