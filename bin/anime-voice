@@ -27,9 +27,9 @@ def clean_voice_text(text):
 
 def record_audio(output_file, duration=4):
     log("\n\033[1;36m╔══════════════════════════════════════════════════════════════╗\033[0m")
-    log("\033[1;36m║                  🎙️  BÚSQUEDA POR VOZ                        ║\033[0m")
+    log("\033[1;36m║                  ::  BÚSQUEDA POR VOZ                        ║\033[0m")
     log("\033[1;36m╚══════════════════════════════════════════════════════════════╝\033[0m")
-    log("\033[1;33m👉 Prepárate para hablar (ej. 'Dandadan 1' o 'Chainsaw Man')...\033[0m")
+    log("\033[1;33m:: Prepárate para hablar (ej. 'Dandadan 1' o 'Chainsaw Man')...\033[0m")
     time.sleep(0.5)
 
     cmd = [
@@ -41,7 +41,7 @@ def record_audio(output_file, duration=4):
     ]
     proc = subprocess.Popen(cmd)
 
-    log("\033[1;31m🔴 GRABANDO: \033[1;37m", end="")
+    log("\033[1;31m[GRABANDO]: \033[1;37m", end="")
     for i in range(duration):
         log(f"[{duration - i}s...] ", end="")
         time.sleep(1)

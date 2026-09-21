@@ -68,22 +68,22 @@ EOF
         fi
         out_dir="$HOME/.cache/webtorrent"
         mkdir -p "$out_dir"
-        echo -e "${YELLOW}💾 Archivo grande (~${int_size} GB): Usando buffer temporal en disco (~/.cache/webtorrent).${NC}"
-        echo -e "${YELLOW}   🛡️  Se eliminará automáticamente al 100% apenas termines de ver.${NC}"
+        echo -e "${YELLOW}:: Archivo grande (~${int_size} GB): Usando buffer temporal en disco (~/.cache/webtorrent).${NC}"
+        echo -e "${YELLOW}   Se eliminará automáticamente al 100% apenas termines de ver.${NC}"
     else
-        echo -e "${GREEN}⚡ Archivo optimizado: Buffer 100% en memoria RAM (/tmp). Cero desgaste en tu SSD.${NC}"
+        echo -e "${GREEN}:: Archivo optimizado: Buffer 100% en memoria RAM (/tmp). Cero desgaste en tu SSD.${NC}"
     fi
 
     if [ -n "$file_idx" ]; then
         select_flag="-s $file_idx"
     fi
 
-    echo -e "\n${GREEN}🚀 Conectando a enjambre verificado y cargando stream en mpv...${NC}"
+    echo -e "\n${GREEN}:: Conectando a enjambre verificado y cargando stream en mpv...${NC}"
     echo -e "${YELLOW}Atajos: '#' cambia idioma de audio (Latino/Inglés) | 'j' subtítulos | 'f' pantalla completa | 'q' cerrar${NC}\n"
 
     $STREAM_BIN "$target" -o "$out_dir" $select_flag --mpv
 
-    echo -e "\n${GREEN}🧹 Limpieza automática: Eliminando buffer y archivos temporales... ¡Listo!${NC}"
+    echo -e "\n${GREEN}:: Limpieza automática: Eliminando buffer y archivos temporales... ¡Listo!${NC}"
     rm -rf /tmp/webtorrent* /tmp/torrent-stream* "$HOME/.cache/webtorrent" 2>/dev/null
 }
 
@@ -140,7 +140,7 @@ run_search_and_play() {
 
             if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
                 echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
-                echo -e "${CYAN}${BOLD}║  🍿 MODO MARATÓN: Cargando Temporada ${next_season} Episodio ${next_ep}...  ║${NC}"
+                echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Temporada ${next_season} Episodio ${next_ep}...  ║${NC}"
                 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
                 query="\"$next_title\" $next_season $next_ep"
                 continue
@@ -156,7 +156,7 @@ run_search_and_play() {
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo -e "${CYAN}${BOLD}Uso de 'serie' / 'pelis':${NC}"
     echo -e "  ${GREEN}serie${NC}                                 Menú principal interactivo"
-    echo -e "  ${GREEN}serie voz${NC}                             Buscar hablando por el micrófono 🎙️"
+    echo -e "  ${GREEN}serie voz${NC}                             Buscar hablando por el micrófono"
     echo -e "  ${GREEN}serie \"<nombre>\"${NC}                     Busca una serie o película"
     echo -e "  ${GREEN}serie \"<nombre>\" <temp> <cap>${NC}        Busca directo temporada y capítulo (ej. serie \"The Last of Us\" 1 2)"
     echo -e "  ${GREEN}serie \"<enlace_magnet>\"${NC}               Reproduce el magnet directamente"
@@ -198,12 +198,12 @@ fi
 
 # Menú principal si solo escribieron "serie" o "pelis"
 echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}${BOLD}║   🍿 REPRODUCTOR DE SERIES Y PELÍCULAS (Netflix/HBO/etc)     ║${NC}"
+echo -e "${CYAN}${BOLD}║   :: REPRODUCTOR DE SERIES Y PELÍCULAS (Netflix/HBO/etc)     ║${NC}"
 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo -e "  ${GREEN}[1]${NC} 🔍 Buscar Serie o Película por texto"
-echo -e "  ${CYAN}[2]${NC} 🎙️  Buscar por VOZ (habla por el micrófono)"
-echo -e "  ${YELLOW}[3]${NC} 🧲 Pegar enlace magnet directo"
-echo -e "  ${YELLOW}[4]${NC} ⏩ Continuar viendo serie o película en progreso"
+echo -e "  ${GREEN}[1]${NC} Buscar Serie o Película por texto"
+echo -e "  ${CYAN}[2]${NC} Buscar por VOZ (habla por el micrófono)"
+echo -e "  ${YELLOW}[3]${NC} Pegar enlace magnet directo"
+echo -e "  ${YELLOW}[4]${NC} Continuar viendo serie o película en progreso"
 echo -e "  ${RED}[q]${NC} Salir\n"
 
 read -p "Elige una opción [1]: " MENU_CHOICE

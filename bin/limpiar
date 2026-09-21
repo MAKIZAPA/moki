@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "\n${CYAN}${BOLD}🧹 Limpiando búfer de RAM y residuos temporales...${NC}"
+echo -e "\n${CYAN}${BOLD}:: Limpiando búfer de RAM y residuos temporales...${NC}"
 
 # 1. Eliminar residuos de streaming en RAM (/tmp) y disco temporal
 rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/current_media.json "$HOME/.cache/webtorrent" 2>/dev/null
@@ -18,10 +18,10 @@ rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/current_media.json "$HOME/.cac
 # 2. Sincronizar buffers pendientes
 sync
 
-echo -e "${GREEN}✅ Residuos de reproducción purgados con éxito.${NC}"
-echo -e "${YELLOW}🛡️  Tus aplicaciones abiertas (Firefox, Steam, Discord, etc.) siguen intactas.${NC}\n"
+echo -e "${GREEN}:: Residuos de reproducción purgados con éxito.${NC}"
+echo -e "${YELLOW}   Tus aplicaciones abiertas (Firefox, Steam, Discord, etc.) siguen intactas.${NC}\n"
 
 # 3. Mostrar estado actual de memoria
-echo -e "${BOLD}📊 Estado actual de tu Memoria RAM:${NC}"
+echo -e "${BOLD}:: Estado actual de tu Memoria RAM:${NC}"
 free -h
 echo ""

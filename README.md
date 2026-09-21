@@ -16,11 +16,11 @@
   </p>
 
   <sub>
-    <a href="#-características">Características</a> •
-    <a href="#-instalación">Instalación</a> •
-    <a href="#-atajos-en-mpv">Atajos</a> •
-    <a href="#-comandos">Comandos</a> •
-    <a href="#-aviso-legal">Aviso Legal</a>
+    <a href="#características">Características</a> •
+    <a href="#instalación">Instalación</a> •
+    <a href="#atajos-en-mpv">Atajos</a> •
+    <a href="#comandos">Comandos</a> •
+    <a href="#aviso-legal">Aviso Legal</a>
   </sub>
 
   <br/><br/>
@@ -28,36 +28,42 @@
 
 ---
 
-## ◈ Características
+## Características
 
 <table>
   <tr>
     <td width="50%">
-      <h4>⚡ Zero-Wear SSD (100% RAM)</h4>
+      <img src="https://img.shields.io/badge/RAM_BUFFER-100%25_MEMORY-ffd700?style=flat-square" alt="RAM" /><br/>
+      <b>Zero-Wear SSD</b><br/>
       El búfer de streaming corre directamente en <code>/tmp</code> (memoria RAM), evitando cualquier desgaste o escritura en tu disco SSD.
     </td>
     <td width="50%">
-      <h4>🔖 Fansub Memory</h4>
+      <img src="https://img.shields.io/badge/AUTONOMOUS-FANSUB_CHAIN-blue?style=flat-square" alt="Fansub" /><br/>
+      <b>Fansub Memory</b><br/>
       Detecta y memoriza tu grupo de release preferido (ej. <code>VARYG</code>, <code>Puya</code>) y auto-encadena los siguientes capítulos sin prompts.
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h4>🎬 Series & Películas en 4K</h4>
-      Catálogo verificado mediante Cinemeta y streams de Torrentio con soporte para Netflix, HBO Max, Disney+, Prime y cine.
+      <img src="https://img.shields.io/badge/STREAMING-4K_&_1080P-purple?style=flat-square" alt="Streams" /><br/>
+      <b>Series & Películas</b><br/>
+      Catálogo verificado mediante Cinemeta y streams de Torrentio con soporte para Netflix, HBO Max, Disney+, Prime y estrenos de cine.
     </td>
     <td width="50%">
-      <h4>🔊 Filtro Estricto de Audio</h4>
+      <img src="https://img.shields.io/badge/AUDIO_FILTER-LATINO_&_ESPAÑA-10b981?style=flat-square" alt="Audio" /><br/>
+      <b>Filtro Estricto de Audio</b><br/>
       Prioridad automática a pistas en <b>Español Latino</b> y <b>Castellano</b>. Bloqueo automático de seeds francesas mudas (<code>MULTi AD</code>).
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h4>⏭️ Modo Maratón & AniSkip</h4>
+      <img src="https://img.shields.io/badge/PLAYBACK-ANISKIP_V2-e11d48?style=flat-square" alt="AniSkip" /><br/>
+      <b>Modo Maratón & AniSkip</b><br/>
       Salto de Opening automático gracias a la API v2 de AniSkip y cuenta regresiva desatendida entre episodios.
     </td>
     <td width="50%">
-      <h4>💻 Multi-GPU Acelerada</h4>
+      <img src="https://img.shields.io/badge/HARDWARE-MULTI--GPU_ACCEL-00f0ff?style=flat-square" alt="GPU" /><br/>
+      <b>Multi-GPU Acelerada</b><br/>
       Aceleración por hardware en <b>NVIDIA</b> (NVDEC), <b>AMD Radeon</b> (RADV/VA-API) e <b>Intel</b> (ANV/VA-API) con shaders <b>Anime4K</b> por IA.
     </td>
   </tr>
@@ -65,7 +71,7 @@
 
 ---
 
-## ⚡ Instalación
+## Instalación
 
 ```bash
 # 1. Clonar el repositorio
@@ -79,9 +85,9 @@ cd moki && chmod +x install.sh && ./install.sh
 
 ---
 
-## ⌨️ Atajos en `mpv`
+## Atajos en mpv
 
-Controles de teclado integrados inspirados en reproductores de alto rendimiento:
+Controles de teclado integrados inspirados en emuladores y reproductores de alto rendimiento:
 
 | Tecla | Función |
 | :---: | :--- |
@@ -97,7 +103,7 @@ Controles de teclado integrados inspirados en reproductores de alto rendimiento:
 
 ---
 
-## ⌘ Comandos
+## Comandos
 
 <details>
 <summary><b>Haz clic aquí para ver todos los subcomandos de terminal</b></summary>
@@ -119,7 +125,7 @@ Controles de teclado integrados inspirados en reproductores de alto rendimiento:
 
 ---
 
-## 🗑️ Desinstalación
+## Desinstalación
 
 <details>
 <summary><b>Instrucciones de desinstalación limpia</b></summary>
@@ -137,14 +143,14 @@ Esto eliminará los ejecutables de `~/.local/bin/` y restaurará tu configuraci�
 
 ---
 
-## 👤 Autor & Agradecimientos
+## Autor & Agradecimientos
 
 - **Desarrollado y mantenido por:** [@makizapa](https://github.com/MAKIZAPA)
 - **Agradecimiento especial:** 💖 *Gracias a mi novia por el nombre (Moki).*
 
 ---
 
-## ⚖️ Aviso Legal / Disclaimer
+## Aviso Legal / Disclaimer
 
 <details>
 <summary><b>Términos legales y exención de responsabilidad</b></summary>
@@ -161,6 +167,6 @@ Este software (**MOKI**) ha sido desarrollado exclusivamente con fines educativo
 
 ---
 
-## 📜 Licencia
+## Licencia
 
 Distribuido bajo la Licencia **MIT**. Consulta el archivo [`LICENSE`](LICENSE) para más información.
