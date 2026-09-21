@@ -1,5 +1,5 @@
 # ✨ MOKI (モキ)
-> **La Streaming Suite de Terminal definitiva para Linux.**  
+> **La Streaming Suite de Terminal para Linux.**  
 > Streaming P2P en memoria RAM, Anime en Nyaa, Series & Películas en 4K/1080p con `mpv`, AniSkip, Anime4K y Modo Maratón automático.
 
 ---
