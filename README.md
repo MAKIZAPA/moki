@@ -1,106 +1,158 @@
-# ✨ MOKI (モキ)
-> **La Streaming Suite de Terminal para Linux.**  
-> Streaming P2P en memoria RAM, Anime en Nyaa, Series & Películas en 4K/1080p con `mpv`, AniSkip, Anime4K y Modo Maratón automático.
+<div align="center">
+
+  <img src="assets/banner.jpg" alt="MOKI Banner" width="100%" />
+
+  <br/><br/>
+
+  <h1>モキ MOKI</h1>
+
+  <p><b>La Streaming Suite de Terminal para Linux</b></p>
+  <p><i>Streaming P2P directo a memoria RAM, Anime en Nyaa, Series & Películas con mpv, AniSkip y Anime4K.</i></p>
+
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge" alt="License" /></a>
+    <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux" />
+    <img src="https://img.shields.io/badge/mpv-8B0000?style=for-the-badge&logo=mpv&logoColor=white" alt="mpv" />
+    <img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" />
+    <img src="https://img.shields.io/badge/NVIDIA-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="NVIDIA" />
+    <img src="https://img.shields.io/badge/AMD-ED1C24?style=for-the-badge&logo=amd&logoColor=white" alt="AMD" />
+    <img src="https://img.shields.io/badge/Intel-0071C5?style=for-the-badge&logo=intel&logoColor=white" alt="Intel" />
+  </p>
+
+  <sub>
+    <a href="#-características">Características</a> •
+    <a href="#-instalación">Instalación</a> •
+    <a href="#-atajos-en-mpv">Atajos</a> •
+    <a href="#-comandos">Comandos</a> •
+    <a href="#-aviso-legal">Aviso Legal</a>
+  </sub>
+
+  <br/><br/>
+</div>
 
 ---
 
-## 🌟 Características Principales
+## ◈ Características
 
-- ⚡ **Zero-Wear SSD (Buffer 100% en RAM):** Todo el contenido menor a 6 GB se almacena temporalmente en `/tmp` (memoria RAM), evitando cualquier desgaste o escritura en tu disco SSD.
-- 🎌 **Anime con Fansub Memory:** Búsqueda en Nyaa y AniList. Si estás viendo un grupo específico (ej. `VARYG`, `Puya`), el sistema lo recuerda y salta al siguiente capítulo de ese mismo grupo automáticamente.
-- 🍿 **Series y Películas:** Catálogo verificado de Cinemeta y streams de Torrentio con soporte para Netflix, HBO Max, Disney+, Amazon Prime y estrenos de cine.
-- 🔊 **Filtro Estricto de Audio:** Prioridad absoluta a versiones en **Español Latino** y **Español España**. Bloqueo automático de seeds francesas mudas (`MULTi AD`).
-- ⏭️ **Modo Maratón & AniSkip:**
-  - `[Shift + N]`: Salta de inmediato al siguiente capítulo sin abrir nuevas terminales.
-  - `[TAB]`: Salta el Opening automáticamente gracias a la API v2 de AniSkip.
-  - Cuenta regresiva de 5 segundos al terminar el episodio para reproducción continua desatendida.
-- 🎮 **Aceleración por Hardware Multi-GPU:**
-  - **NVIDIA:** Vulkan (`gpu-next`) + NVDEC + Anime4K AI Upscaling.
-  - **AMD Radeon:** Vulkan (RADV) + VA-API (Mesa) + Anime4K.
-  - **Intel:** Vulkan (ANV) + VA-API (Media Driver) + Anime4K.
-- ⏩ **Historial Inteligente (`continuar`):**
-  - **< 90% visto:** Reanuda exactamente en el minuto y segundo donde te quedaste con la misma seed.
-  - **≥ 90% visto:** Avanza el contador al siguiente capítulo y busca la misma release.
-  - **Filtro de 2 minutos:** Descarta pruebas rápidas para no ensuciar tu lista.
-- 🎙️ **Búsqueda por Voz:** Busca anime, series o películas hablando por el micrófono.
-- 💬 **Discord Rich Presence:** Muestra el título, capítulo y póster oficial en tu estado de Discord en tiempo real.
+<table>
+  <tr>
+    <td width="50%">
+      <h3><img src="assets/icons/zap.svg" width="18" height="18" align="center" /> Zero-Wear SSD (100% RAM)</h3>
+      El búfer de streaming corre directamente en <code>/tmp</code> (memoria RAM), evitando cualquier desgaste o escritura en tu disco SSD.
+    </td>
+    <td width="50%">
+      <h3><img src="assets/icons/bookmark.svg" width="18" height="18" align="center" /> Fansub Memory</h3>
+      Detecta y memoriza tu grupo de release preferido (ej. <code>VARYG</code>, <code>Puya</code>) y auto-encadena los siguientes capítulos sin prompts.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3><img src="assets/icons/film.svg" width="18" height="18" align="center" /> Series & Películas en 4K</h3>
+      Catálogo verificado mediante Cinemeta y streams de Torrentio con soporte para Netflix, HBO Max, Disney+, Prime y cine.
+    </td>
+    <td width="50%">
+      <h3><img src="assets/icons/volume-2.svg" width="18" height="18" align="center" /> Filtro Estricto de Audio</h3>
+      Prioridad automática a pistas en <b>Español Latino</b> y <b>Castellano</b>. Bloqueo automático de seeds francesas mudas (<code>MULTi AD</code>).
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3><img src="assets/icons/fast-forward.svg" width="18" height="18" align="center" /> Modo Maratón & AniSkip</h3>
+      Salto de Opening automático gracias a la API v2 de AniSkip y cuenta regresiva desatendida entre episodios.
+    </td>
+    <td width="50%">
+      <h3><img src="assets/icons/cpu.svg" width="18" height="18" align="center" /> Multi-GPU Acelerada</h3>
+      Aceleración por hardware en <b>NVIDIA</b> (NVDEC), <b>AMD Radeon</b> (RADV/VA-API) e <b>Intel</b> (ANV/VA-API) con shaders <b>Anime4K</b> por IA.
+    </td>
+  </tr>
+</table>
 
 ---
 
-## 🚀 Instalación Rápida
+## ⚡ Instalación
 
-### 1. Clonar el repositorio
 ```bash
-git clone https://github.com/makizapa/moki.git
-cd moki
+# 1. Clonar el repositorio
+git clone https://github.com/MAKIZAPA/moki.git
+
+# 2. Entrar y ejecutar el instalador universal
+cd moki && chmod +x install.sh && ./install.sh
 ```
 
-### 2. Ejecutar el instalador
-```bash
-chmod +x install.sh
-./install.sh
-```
-
-El instalador detectará automáticamente:
-1. Tu distribución (Arch/CachyOS, Debian/Ubuntu, Fedora).
-2. Tu tarjeta gráfica (NVIDIA, AMD o Intel) y configurará los drivers de Vulkan/VA-API adecuados.
-3. Instalará las herramientas requeridas (`mpv`, `fzf`, `jq`, `webtorrent-cli`, etc.).
-4. Copiará los comandos a `~/.local/bin/` y configurará tu `PATH`.
+> **Nota:** El instalador detecta automáticamente tu distribución (`pacman`, `apt`, `dnf`), tu arquitectura de GPU e integra los comandos en tu `$PATH`.
 
 ---
 
-## 💻 Comandos Disponibles
+## ⌨️ Atajos en `mpv`
+
+Controles de teclado integrados inspirados en reproductores de alto rendimiento:
+
+| Tecla | Función |
+| :---: | :--- |
+| <kbd>Shift</kbd> + <kbd>N</kbd> | **Siguiente capítulo** (Modo Maratón inmediato con la misma seed) |
+| <kbd>TAB</kbd> | **Saltar Opening** (AniSkip con base de datos oficial) |
+| <kbd>a</kbd> / <kbd>#</kbd> | **Alternar audio** (Español Latino / Japonés / Castellano / Inglés) |
+| <kbd>j</kbd> | **Alternar subtítulos** |
+| <kbd>Ctrl</kbd> + <kbd>1</kbd> | **Anime4K (HQ)** — Máxima fidelidad y nitidez con IA en GPU |
+| <kbd>Ctrl</kbd> + <kbd>2</kbd> | **Anime4K (Fast)** — Modo ligero para GPUs integradas o laptops |
+| <kbd>Ctrl</kbd> + <kbd>0</kbd> | **Desactivar Shaders** (Imagen original sin procesar) |
+| <kbd>f</kbd> | Pantalla completa |
+| <kbd>q</kbd> | Guardar posición exacta y salir |
+
+---
+
+## ⌘ Comandos
+
+<details>
+<summary><b>Haz clic aquí para ver todos los subcomandos de terminal</b></summary>
+<br/>
 
 | Comando | Descripción |
 | :--- | :--- |
-| `moki` | Abre el menú interactivo principal de la suite |
-| `moki anime <nombre> [cap]` | Busca y reproduce anime (ej. `moki anime "Dandadan" 1`) |
-| `moki serie <nombre> [temp] [cap]` | Busca y reproduce series (ej. `moki serie "The Last of Us" 1 1`) |
-| `moki pelis <nombre>` | Busca películas con prioridad de cine (ej. `moki pelis "Dune"`) |
-| `moki continuar` | Abre tu historial de reanudación interactivo |
-| `moki voz` | Inicia la búsqueda por voz a través del micrófono |
-| `moki limpiar` | Limpia los buffers temporales de streaming y libera RAM |
+| `moki` | Menú interactivo principal con selección visual |
+| `moki anime <nombre> [cap]` | Búsqueda y streaming directo de anime en Nyaa |
+| `moki serie <nombre> [temp] [cap]` | Búsqueda de series en Cinemeta y Torrentio |
+| `moki pelis <nombre>` | Búsqueda de películas con prioridad de cine |
+| `moki continuar` | Historial inteligente (reanuda segundo exacto o salta de episodio) |
+| `moki voz` | Búsqueda por reconocimiento de voz mediante micrófono |
+| `moki limpiar` | Limpieza de búferes temporales y liberación de memoria RAM |
 
-*Nota: También puedes usar los comandos directos en la terminal: `anime`, `serie`, `pelis`, `continuar` y `limpiar`.*
+*Nota: También puedes invocar cada utilidad directamente en tu terminal: `anime`, `serie`, `pelis`, `continuar` y `limpiar`.*
 
----
-
-## ⌨️ Atajos dentro del Reproductor (`mpv`)
-
-| Tecla | Acción |
-| :---: | :--- |
-| `Shift + N` | **Siguiente capítulo automático** (Modo Maratón con la misma seed) |
-| `TAB` | **Saltar Opening** (AniSkip con base de datos oficial) |
-| `a` o `#` | **Alternar pista de audio** (Español Latino / Japonés / Inglés) |
-| `j` | **Alternar subtítulos** |
-| `Ctrl + 1` | **Anime4K Modo A (HQ)** - Máxima fidelidad con IA en GPU |
-| `Ctrl + 2` | **Anime4K Modo A (Rápido)** - Modo ligero para GPUs integradas o laptops |
-| `Ctrl + 0` | Desactivar Anime4K (Imagen original) |
-| `f` | Pantalla completa |
-| `q` | Guardar posición y salir |
+</details>
 
 ---
 
 ## 🗑️ Desinstalación
 
-Si alguna vez deseas desinstalar MOKI de tu equipo, solo ejecuta:
+<details>
+<summary><b>Instrucciones de desinstalación limpia</b></summary>
+<br/>
+
+Si en algún momento deseas desinstalar MOKI de tu equipo:
+
 ```bash
-cd moki
-./uninstall.sh
+cd moki && ./uninstall.sh
 ```
+
+Esto eliminará los ejecutables de `~/.local/bin/` y restaurará tu configuración previa de `mpv`.
+
+</details>
 
 ---
 
 ## 👤 Autor & Agradecimientos
 
-- **Desarrollado y optimizado por:** [@makizapa](https://github.com/makizapa)
+- **Desarrollado y mantenido por:** [@makizapa](https://github.com/MAKIZAPA)
 - **Agradecimiento especial:** 💖 *Gracias a mi novia por el nombre (Moki).*
-
-Hecho para entusiastas de Linux, amantes del anime y cinéfilos de terminal.
 
 ---
 
 ## ⚖️ Aviso Legal / Disclaimer
+
+<details>
+<summary><b>Términos legales y exención de responsabilidad</b></summary>
+<br/>
 
 Este software (**MOKI**) ha sido desarrollado exclusivamente con fines educativos, de investigación técnica y uso personal.
 
@@ -109,9 +161,10 @@ Este software (**MOKI**) ha sido desarrollado exclusivamente con fines educativo
 - **Responsabilidad del usuario:** Los creadores y colaboradores de este proyecto no se hacen responsables del uso indebido que los usuarios puedan darle a esta herramienta, ni de la naturaleza de los contenidos que decidan reproducir. Es responsabilidad exclusiva de cada usuario final verificar y cumplir con las leyes de derechos de autor y regulaciones vigentes en su respectivo país o jurisdicción.
 - **Marcas comerciales:** Todas las marcas registradas, títulos, logotipos y nombres de servicios mencionados (Crunchyroll, Netflix, HBO Max, Disney+, Amazon Prime, AniList, etc.) pertenecen a sus respectivos propietarios y se utilizan únicamente con propósitos informativos y de referencia descriptiva.
 
+</details>
+
 ---
 
 ## 📜 Licencia
 
-Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [`LICENSE`](LICENSE) para más detalles.
-
+Distribuido bajo la Licencia **MIT**. Consulta el archivo [`LICENSE`](LICENSE) para más información.

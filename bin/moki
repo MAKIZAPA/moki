@@ -24,20 +24,20 @@ show_banner() {
     echo " | |  | | |_| | . \ | | "
     echo " |_|  |_|\___/|_|\_\___|"
     echo -e "${NC}"
-    echo -e "${PURPLE}${BOLD} 📺 Streaming Suite de Terminal (Anime • Series • Películas)${NC}"
-    echo -e "${BLUE} Creado por: ${YELLOW}makizapa${BLUE} • v${VERSION}${NC}"
+    echo -e " ${PURPLE}✦${NC} ${BOLD}MOKI (モキ)${NC} • Streaming Suite de Terminal"
+    echo -e " ${BLUE}◈${NC} Autor: ${YELLOW}makizapa${NC} • ${CYAN}v${VERSION}${NC}"
     echo -e "${CYAN}────────────────────────────────────────────────────────────────${NC}"
 }
 
 show_menu() {
     show_banner
-    echo -e "  ${GREEN}[1]${NC} 🎌  ${BOLD}Anime${NC} (Nyaa, Doblaje Latino, AniSkip, Anime4K)"
-    echo -e "  ${CYAN}[2]${NC} 🍿  ${BOLD}Series${NC} (Netflix, HBO, Disney, Amazon, 1080p/4K)"
-    echo -e "  ${YELLOW}[3]${NC} 🎬  ${BOLD}Películas${NC} (Estrenos, 4K HDR, Castellano/Latino)"
-    echo -e "  ${PURPLE}[4]${NC} ⏩  ${BOLD}Continuar viendo${NC} (Historial y reanudación exacta)"
-    echo -e "  ${BLUE}[5]${NC} 🎙️   ${BOLD}Búsqueda por VOZ${NC} (Habla por el micrófono)"
-    echo -e "  ${RED}[6]${NC} 🧹  ${BOLD}Limpiar caché y RAM${NC}"
-    echo -e "  ${RED}[q]${NC} 🚪  Salir\n"
+    echo -e "  ${GREEN}[1]${NC} ${CYAN}◈${NC} ${BOLD}Anime${NC}             Nyaa • AniSkip • Anime4K • Doblaje Latino"
+    echo -e "  ${CYAN}[2]${NC} ${PURPLE}◈${NC} ${BOLD}Series${NC}            Netflix • HBO • Disney+ • 1080p/4K"
+    echo -e "  ${YELLOW}[3]${NC} ${YELLOW}◈${NC} ${BOLD}Películas${NC}         Estrenos de Cine • 4K HDR • Audio Dual"
+    echo -e "  ${PURPLE}[4]${NC} ${BLUE}↻${NC} ${BOLD}Continuar viendo${NC}  Historial y reanudación exacta"
+    echo -e "  ${BLUE}[5]${NC} ${GREEN}⌕${NC} ${BOLD}Búsqueda por VOZ${NC}  Control y búsqueda por micrófono"
+    echo -e "  ${RED}[6]${NC} ${YELLOW}⚡${NC} ${BOLD}Limpiar RAM${NC}       Mantenimiento y liberación de búfer"
+    echo -e "  ${RED}[q]${NC} ${RED}✕${NC} ${BOLD}Salir${NC}\n"
     echo -e "  ${PURPLE}💖 Gracias a mi novia por el nombre (Moki)${NC}\n"
 
     read -p " Elige una opción [1]: " OPTION
