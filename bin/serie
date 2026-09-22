@@ -81,7 +81,7 @@ EOF
     fi
 
     echo -e "\n${GREEN}:: Conectando a enjambre verificado y cargando stream en mpv...${NC}"
-    echo -e "${YELLOW}Atajos: '#' cambia idioma de audio (Latino/Inglés) | 'j' subtítulos | 'f' pantalla completa | 'q' cerrar${NC}\n"
+    echo -e "${YELLOW}Atajos: [L] Inyectar Audio Latino Web | '#' cambia audio | [Alt+z/x] Sincronía | 'j' subs | 'q' cerrar${NC}\n"
 
     $STREAM_BIN "$target" -o "$out_dir" $select_flag --mpv
 

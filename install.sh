@@ -254,9 +254,13 @@ sub-border-size=2.5
 cache=yes
 demuxer-max-bytes=250M
 demuxer-max-back-bytes=100M
+
+# Compatibilidad con streams de audio web
+user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+referrer="https://flaswish.com/"
 EOF
 
-echo -e "   ${GREEN}✓ mpv.conf, input.conf y 4 scripts Lua instalados.${NC}"
+echo -e "   ${GREEN}✓ mpv.conf, input.conf y 5 scripts Lua instalados.${NC}"
 
 # ------------------------------------------------------------------------------
 # 6. Verificación de la variable PATH

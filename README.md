@@ -54,8 +54,8 @@
   <tr>
     <td width="50%">
       <img src="https://img.shields.io/badge/WEB_STREAM-MULTI--PROVIDER-10b981?style=flat-square" alt="Web Latino" /><br/>
-      <b>Audio Latino Web (Failover Concurrente)</b><br/>
-      Streaming directo de películas, series y anime en Español Latino sin depender de semillas P2P. Resolución concurrente y respaldo automático contra caídas entre <b>Flixlatam</b>, <b>Cuevana 3</b> y <b>JKAnime</b>, extrayendo flujos HLS/m3u8 limpios a 1080p hacia mpv.
+      <b>Audio Latino Web & Inyección Dinámica</b><br/>
+      Streaming directo sin depender de semillas P2P, e <b>Inyección al vuelo</b> (<kbd>L</kbd>) de la pista de doblaje latino web sobre seeds BitTorrent de alta calidad (1080p/4K) con sincronización de desfase en tiempo real. Respaldo automático entre Flixlatam, Cuevana 3 y JKAnime.
     </td>
     <td width="50%">
       <img src="https://img.shields.io/badge/AUDIO_FILTER-LATINO_&_ESPAÑA-0071C5?style=flat-square" alt="Audio" /><br/>
@@ -113,6 +113,10 @@ Controles integrados optimizados para reproducción fluida:
 
 | Tecla | Función |
 | :---: | :--- |
+| <kbd>L</kbd> / <kbd>Alt</kbd> + <kbd>L</kbd> | **Inyectar Audio Latino Web** (Monta el doblaje web sobre seeds de torrent) |
+| <kbd>Alt</kbd> + <kbd>z</kbd> / <kbd>Alt</kbd> + <kbd>x</kbd> | **Sincronización de Audio** (Ajusta desfase en ±100 ms) |
+| <kbd>Alt</kbd> + <kbd>Z</kbd> / <kbd>Alt</kbd> + <kbd>X</kbd> | **Sincronización Rápida** (Ajusta desfase en ±500 ms) |
+| <kbd>Alt</kbd> + <kbd>0</kbd> | **Resetear desfase** de audio (0.000s) |
 | <kbd>Shift</kbd> + <kbd>N</kbd> | **Siguiente capítulo** (Modo Maratón inmediato con la misma release/temporada) |
 | <kbd>TAB</kbd> | **Saltar Opening** (AniSkip con base de datos oficial) |
 | <kbd>a</kbd> / <kbd>#</kbd> | **Alternar audio** (Español Latino / Japonés / Castellano / Inglés) |

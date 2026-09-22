@@ -88,7 +88,7 @@ EOF
     fi
 
     echo -e "\n${GREEN}:: Conectando y cargando stream en mpv...${NC}"
-    echo -e "${YELLOW}Atajos: [TAB] Salta Opening (AniSkip) | [Shift+N] Siguiente cap | [Ctrl+1] IA Anime4K | [q] Salir${NC}\n"
+    echo -e "${YELLOW}Atajos: [L] Audio Latino Web | [TAB] AniSkip | [Alt+z/x] Sincronía | [Shift+N] Siguiente | [Ctrl+1] Anime4K | [q] Salir${NC}\n"
 
     $STREAM_BIN "$target" -o "$out_dir" $select_flag $interactive_flag --mpv
 

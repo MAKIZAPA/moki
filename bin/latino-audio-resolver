@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# ==========================================================
+# MOKI - Latino Audio Stream Resolver
+# Resuelve al vuelo la URL de streaming en Español Latino
+# (Flixlatam / Cuevana 3 / JKAnime) para inyectar en mpv
+# Autor: @makizapa
+# ==========================================================
+
+import os
+import sys
+import json
+import urllib.request
+import urllib.parse
+import re
+
+# Añadir directorio de binarios al path para importar latino-search
+BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+if BIN_DIR not in sys.path:
+    sys.path.insert(0, BIN_DIR)
+
+import importlib.machinery
+latino_search_path = os.path.join(BIN_DIR, "latino-search")
+if not os.path.exists(latino_search_path):
+    latino_search_path = os.path.expanduser("~/.local/bin/latino-search")
+
+try:
+    ls_mod = importlib.machinery.SourceFileLoader("latino_search", latino_search_path).load_module()
+except Exception as e:
+    sys.stderr.write(f"Error cargando módulo latino-search: {e}\n")
+    print(json.dumps({"status": "error", "message": f"Error importando latino-search: {e}"}))
+    sys.exit(1)
+
+def log(msg):
+    sys.stderr.write(f"{msg}\n")
+    sys.stderr.flush()
+
+def translate_to_spanish(text):
+    """Traduce títulos en inglés/japonés al español para localizar en catálogos latinos."""
+    try:
+        url = f"https://api.mymemory.translated.net/get?q={urllib.parse.quote(text)}&langpair=en|es"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            translated = data.get("responseData", {}).get("translatedText", "")
+            if translated and translated.lower() != text.lower() and not translated.startswith("MYMEMORY WARNING"):
+                return translated.strip()
+    except Exception:
+        pass
+    return text
+
+def clean_anime_romaji(title):
+    """Limpia sufijos típicos de títulos de anime para maximizar coincidencia."""
+    cleaned = re.sub(r":\s*Isekai Ittara Honki Dasu.*$", "", title, flags=re.IGNORECASE)
+    cleaned = re.sub(r":\s*Jobless Reincarnation.*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+Part\s+\d+.*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+def resolve_audio(title, season=1, episode=1, is_series=True):
+    session = ls_mod.requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+    })
+
+    clean_t = clean_anime_romaji(title)
+
+    # 1. Búsqueda con título original
+    log(f"🔎 [Latino-Resolver] Buscando en fuentes web: '{clean_t}'...")
+    results = ls_mod.search_all_sources(session, clean_t)
+    matching = [r for r in results if r.get("is_series", False) == is_series and ls_mod.is_title_match(clean_t, r["title"])]
+
+    # 2. Si no hubo coincidencia, intentar traduciendo al español (ej. 'A Love Other Than Yours' ➔ 'Un amor distinto al tuyo')
+    es_title = None
+    if not matching:
+        es_title = translate_to_spanish(clean_t)
+        if es_title and es_title.lower() != clean_t.lower():
+            log(f"🌐 [Latino-Resolver] Probando traducción al español: '{es_title}'...")
+            es_results = ls_mod.search_all_sources(session, es_title)
+            matching = [r for r in es_results if r.get("is_series", False) == is_series and ls_mod.is_title_match(es_title, r["title"])]
+            results = es_results
+
+    if not matching:
+        log(f"❌ [Latino-Resolver] No se encontró versión en streaming para '{title}'")
+        return None
+
+    chosen_item = matching[0]
+    log(f"✓ [Latino-Resolver] Título encontrado: '{chosen_item['title']}' [{chosen_item['provider_label']}]")
+
+    target_ep_info = None
+    if is_series:
+        episodes = ls_mod.get_episodes_for_item(session, chosen_item)
+        if not episodes:
+            log("❌ [Latino-Resolver] No se pudieron cargar los episodios.")
+            return None
+
+        # Coincidencia por temporada y capítulo
+        for ep in episodes:
+            if ep["season"] == season and ep["episode"] == episode:
+                target_ep_info = ep
+                break
+
+        # Fallback a coincidencia sólo por número de capítulo
+        if not target_ep_info:
+            for ep in episodes:
+                if ep["episode"] == episode:
+                    target_ep_info = ep
+                    break
+
+        if not target_ep_info:
+            log(f"❌ [Latino-Resolver] No se encontró el capítulo T{season:02d}E{episode:02d}.")
+            return None
+
+    log(f"▶ [Latino-Resolver] Extrayendo flujo de audio/stream...")
+    stream_url, referer, lang = ls_mod.extract_stream_with_fallback(
+        session, chosen_item, target_ep_info, results, user_query=es_title or clean_t
+    )
+
+    if not stream_url:
+        log("❌ [Latino-Resolver] Falló la extracción en todos los servidores.")
+        return None
+
+    return {
+        "status": "success",
+        "stream_url": stream_url,
+        "referer": referer or "https://flaswish.com/",
+        "title": chosen_item["title"],
+        "provider": chosen_item["provider_label"],
+        "lang": lang or "LATINO",
+        "season": season,
+        "episode": episode
+    }
+
+def main():
+    media_file = "/tmp/current_media.json"
+    title = ""
+    season = 1
+    episode = 1
+    is_series = True
+
+    # Argumentos CLI explícitos: latino-audio-resolver "Nombre" [temp] [cap]
+    if len(sys.argv) > 1:
+        args = sys.argv[1:]
+        if len(args) >= 3 and args[-2].isdigit() and args[-1].isdigit():
+            season = int(args[-2])
+            episode = int(args[-1])
+            title = " ".join(args[:-2])
+        elif len(args) >= 2 and args[-1].isdigit():
+            episode = int(args[-1])
+            title = " ".join(args[:-1])
+        else:
+            title = " ".join(args)
+            is_series = False
+    elif os.path.exists(media_file):
+        try:
+            with open(media_file, "r") as f:
+                data = json.load(f)
+            title = data.get("title", "")
+            season = int(data.get("season", 1))
+            episode = int(data.get("episode_num", 1))
+            media_type = data.get("type", "series")
+            is_series = (media_type != "movie")
+        except Exception as e:
+            log(f"Error leyendo {media_file}: {e}")
+
+    if not title:
+        print(json.dumps({"status": "error", "message": "No se especificó ningún título"}))
+        sys.exit(1)
+
+    result = resolve_audio(title, season, episode, is_series)
+    if result:
+        print(json.dumps(result))
+        sys.exit(0)
+    else:
+        print(json.dumps({"status": "not_found", "message": "Audio latino no encontrado"}))
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
