@@ -130,6 +130,9 @@ def resolve_audio(title, season=1, episode=1, is_series=True):
     }
 
 def main():
+    prefetch = "--prefetch" in sys.argv or "--background" in sys.argv
+    cli_args = [a for a in sys.argv[1:] if a not in ("--prefetch", "--background")]
+
     media_file = "/tmp/current_media.json"
     title = ""
     season = 1
@@ -137,17 +140,16 @@ def main():
     is_series = True
 
     # Argumentos CLI explícitos: latino-audio-resolver "Nombre" [temp] [cap]
-    if len(sys.argv) > 1:
-        args = sys.argv[1:]
-        if len(args) >= 3 and args[-2].isdigit() and args[-1].isdigit():
-            season = int(args[-2])
-            episode = int(args[-1])
-            title = " ".join(args[:-2])
-        elif len(args) >= 2 and args[-1].isdigit():
-            episode = int(args[-1])
-            title = " ".join(args[:-1])
+    if cli_args:
+        if len(cli_args) >= 3 and cli_args[-2].isdigit() and cli_args[-1].isdigit():
+            season = int(cli_args[-2])
+            episode = int(cli_args[-1])
+            title = " ".join(cli_args[:-2])
+        elif len(cli_args) >= 2 and cli_args[-1].isdigit():
+            episode = int(cli_args[-1])
+            title = " ".join(cli_args[:-1])
         else:
-            title = " ".join(args)
+            title = " ".join(cli_args)
             is_series = False
     elif os.path.exists(media_file):
         try:
@@ -166,7 +168,15 @@ def main():
         sys.exit(1)
 
     result = resolve_audio(title, season, episode, is_series)
+    ready_file = "/tmp/latino_stream_ready.json"
+
     if result:
+        try:
+            with open(ready_file, "w") as f:
+                json.dump(result, f)
+        except Exception:
+            pass
+
         print(json.dumps(result))
         sys.exit(0)
     else:

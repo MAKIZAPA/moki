@@ -16,7 +16,7 @@ VOICE_SCRIPT="$HOME/.local/bin/anime-voice"
 
 # Limpieza preventiva y de cierre (para que no quede NINGÚN archivo residual)
 cleanup() {
-    rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/current_media.json "$HOME/.cache/webtorrent" 2>/dev/null
+    rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/current_media.json /tmp/latino_stream_ready.json /tmp/latino_audio.aac "$HOME/.cache/webtorrent" 2>/dev/null
 }
 trap cleanup EXIT INT TERM
 
@@ -123,6 +123,7 @@ run_search_and_play() {
         season=$(echo "$output" | grep "^SEASON:" | head -n1 | cut -d':' -f2-)
         episode=$(echo "$output" | grep "^EPISODE:" | head -n1 | cut -d':' -f2-)
         ep_num=$(echo "$output" | grep "^EPISODE_NUM:" | head -n1 | cut -d':' -f2-)
+        has_latino=$(echo "$output" | grep "^HAS_LATINO:" | head -n1 | cut -d':' -f2-)
         poster=$(echo "$output" | grep "^POSTER:" | head -n1 | cut -d':' -f2-)
         mal_id=$(echo "$output" | grep "^MAL_ID:" | head -n1 | cut -d':' -f2-)
         group=$(echo "$output" | grep "^GROUP:" | head -n1 | cut -d':' -f2-)
@@ -130,6 +131,7 @@ run_search_and_play() {
 
         [ -z "$season" ] && season=1
         [ -z "$ep_num" ] && ep_num=1
+        [ -z "$has_latino" ] && has_latino=0
         [ -z "$mal_id" ] && mal_id=0
         local start_time="${RESUME_START_TIME:-0}"
         export RESUME_START_TIME=0
@@ -144,6 +146,12 @@ run_search_and_play() {
         fi
 
         if [ -n "$magnet" ]; then
+            # Si el release de anime no incluye audio en español, pre-cargar en segundo plano en RAM
+            if [ "$has_latino" = "0" ]; then
+                echo -e "${CYAN}:: Release sin doblaje latino. Pre-cargando audio web en segundo plano...${NC}"
+                rm -f /tmp/latino_stream_ready.json /tmp/latino_audio.aac
+                ("$HOME/.local/bin/latino-audio-resolver" "$title" "$season" "$ep_num" --prefetch >/dev/null 2>&1 &)
+            fi
             play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title" "$file_idx" "$interactive_arg" "$season"
         else
             break

@@ -422,6 +422,7 @@ def main():
         print(f"TYPE:{media_type}")
         print(f"SEASON:{season}")
         print(f"EPISODE_NUM:{episode}")
+        print(f"HAS_LATINO:{1 if chosen.get('lang_score', 0) >= 3 else 0}")
         if media_type == "series":
             print(f"EPISODE:Temporada {season} • Episodio {episode}")
         else:

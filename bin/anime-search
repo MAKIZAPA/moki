@@ -793,6 +793,7 @@ def main():
         print(f"TYPE:anime")
         print(f"SEASON:{season if season is not None else 1}")
         print(f"EPISODE_NUM:{ep if ep is not None else 1}")
+        print(f"HAS_LATINO:{1 if selected.get('cls') in ('LATINO', 'ESP_ESP') else 0}")
         print(f"MAL_ID:{mal_id}")
         print(f"GROUP:{group}")
         print(f"RELEASE_TITLE:{selected.get('raw_title', selected['title'])}")
