@@ -239,8 +239,8 @@ correct-downscaling=yes
 linear-downscaling=yes
 
 # Idiomas Preferidos (Español Latino prioritario, Español España, Japonés, Inglés)
-alang=es-419,es-la,es,spa,ja,jpn,en
-slang=es-419,es-la,es,spa,en
+alang=es-419,es-la,lat,latino,es,spa,ja,jpn,en
+slang=es-419,es-la,lat,latino,es,spa,en
 audio-pitch-correction=yes
 audio-fallback=yes
 
