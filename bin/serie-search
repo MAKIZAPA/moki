@@ -169,27 +169,69 @@ def parse_stream_info(stream):
 
     # Detectar resolución
     res = "1080p"
-    if "2160p" in first or "4k" in first.lower() or "4K" in stream.get("name", ""):
+    if "2160p" in first.lower() or "4k" in first.lower() or "4k" in stream.get("name", "").lower():
         res = "4K"
-    elif "1080p" in first or "1080P" in first or "1080p" in stream.get("name", ""):
+    elif "1080p" in first.lower() or "1080p" in stream.get("name", "").lower():
         res = "1080p"
-    elif "720p" in first:
+    elif "720p" in first.lower():
         res = "720p"
 
-    # Detectar idioma
-    is_latino = any(k in (first + meta_text).lower() for k in ["latino", "lat", "🇲🇽"])
-    is_spanish = any(k in (first + meta_text).lower() for k in ["spa", "español", "espanol", "castellano", "🇪🇸"])
-    is_multi = any(k in (first + meta_text).lower() for k in ["multi", "dual"])
+    # Detectar idioma de forma rigurosa para evitar falsos positivos
+    full_text = (first + " " + meta_text).lower()
+    has_multi_audio_text = "multi audio" in meta_text.lower() or "dual audio" in meta_text.lower()
+    has_latino_flag = "🇲🇽" in meta_text
+    has_spain_flag = "🇪🇸" in meta_text
+
+    # 1. Detección certera de Audio Latino
+    # Se busca palabra completa (boundary \b) para no confundir con 'Latarnie' (polaco) o 'lateral'
+    is_latino = False
+    if has_latino_flag or "cinecalidad" in full_text:
+        is_latino = True
+    elif re.search(r'\b(latino|lat|dual-lat|audio-latino)\b', full_text):
+        if not re.search(r'\b(latarnie|lateral)\b', full_text):
+            is_latino = True
+
+    # 2. Detección certera de Audio Castellano / España
+    is_spanish = False
+    if not is_latino:
+        if has_spain_flag and has_multi_audio_text:
+            is_spanish = True
+        elif any(k in full_text for k in ["castellano", "tri-audio", "spa-eng", "esp-eng", "wolfmax4k", "mejortorrent"]):
+            is_spanish = True
+        elif re.search(r'\b(spa|esp)\b', first.lower()) and has_multi_audio_text:
+            is_spanish = True
+
+    # 3. Multi-audio que contiene doblaje al español
+    is_multi = False
+    if not is_latino and not is_spanish:
+        if "19.audio.languages" in full_text or ("multi+" in full_text and has_spain_flag):
+            is_multi = True
+        elif has_multi_audio_text and (has_spain_flag or "spa" in full_text):
+            is_multi = True
+
+    # 4. Únicamente subtítulos en español (audio original en inglés/coreano/etc)
+    is_sub = False
+    if not is_latino and not is_spanish and not is_multi:
+        if has_spain_flag or "sub" in full_text or "vose" in full_text:
+            is_sub = True
 
     lang_tag = ""
+    lang_score = 0
     if is_latino:
         lang_tag = "\033[1;32m[LATINO 🇲🇽]\033[0m"
+        lang_score = 4
     elif is_spanish:
         lang_tag = "\033[1;33m[ESPAÑOL 🇪🇸]\033[0m"
+        lang_score = 3
     elif is_multi:
         lang_tag = "\033[1;36m[MULTI-AUDIO]\033[0m"
+        lang_score = 2
+    elif is_sub:
+        lang_tag = "\033[0;35m[SUB ESPAÑOL 💬]\033[0m"
+        lang_score = 1
     else:
         lang_tag = "\033[0;34m[ORIGINAL]\033[0m"
+        lang_score = 0
 
     # Detectar plataforma
     platform = detect_platform(first + " " + meta_text)
@@ -202,6 +244,7 @@ def parse_stream_info(stream):
         "seeds": seeds,
         "source": source,
         "lang_tag": lang_tag,
+        "lang_score": lang_score,
         "platform_tag": platform_tag,
         "infoHash": stream.get("infoHash"),
         "fileIdx": stream.get("fileIdx")
@@ -302,26 +345,19 @@ def main():
             if not is_too_large_or_remux(info["title"], info["size"]):
                 parsed.append(info)
     
-    # Ordenar: 1º Español Latino, 2º Calidad (4K ligero > 1080p), 3º Semillas
+    # Ordenar con prioridad: 1º Latino 🇲🇽, 2º Castellano 🇪🇸, 3º Multi-Audio, 4º Subtitulado 💬, 5º Original
+    # En calidad: Prioridad absoluta a 1080p (estándar óptimo solicitado), luego 4K, luego 720p
     def sort_key(x):
-        lang_score = 0
-        if "LATINO" in x["lang_tag"]:
-            lang_score = 3
-        elif "MULTI" in x["lang_tag"]:
-            lang_score = 2
-        elif "ESPAÑOL" in x["lang_tag"]:
-            lang_score = 1
-
         res_score = 0
-        if x["res"] == "4K":
+        if x["res"] == "1080p":
             res_score = 2
-        elif x["res"] == "1080p":
+        elif x["res"] == "4K":
             res_score = 1
 
-        return (lang_score, res_score, x["seeds"])
+        return (x.get("lang_score", 0), res_score, x["seeds"])
 
     parsed.sort(key=sort_key, reverse=True)
-    top_streams = parsed[:15]
+    top_streams = parsed[:25]
 
     header = f"{media_name} (T{season:02d}E{episode:02d})" if media_type == "series" else media_name
     fzf_stream_lines = []
