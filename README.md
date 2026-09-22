@@ -15,10 +15,16 @@
     <img src="https://img.shields.io/badge/Intel-0071C5?style=for-the-badge&logo=intel&logoColor=white" alt="Intel" />
   </p>
 
+  <br/>
+
+  <img src="assets/banner.jpg" alt="MOKI Banner" width="100%" />
+
+  <br/><br/>
+
   <sub>
     <a href="#características">Características</a> •
     <a href="#instalación">Instalación</a> •
-    <a href="#atajos-en-mpv">Atajos</a> •
+    <a href="#atajos-de-teclado">Atajos</a> •
     <a href="#comandos">Comandos</a> •
     <a href="#aviso-legal">Aviso Legal</a>
   </sub>
