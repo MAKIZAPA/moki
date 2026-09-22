@@ -3,7 +3,7 @@
   <h1>モキ MOKI</h1>
 
   <p><b>La Streaming Suite de Terminal para Linux</b></p>
-  <p><i>Streaming P2P directo a memoria RAM, Web Scraping multi-proveedor (Flixlatam, Cuevana 3, JKAnime), búsqueda por Temporada en Nyaa, Series & Películas con mpv, AniSkip y Anime4K.</i></p>
+  <p><i>Streaming P2P directo a memoria RAM, Web Scraping multi-proveedor, búsqueda en Nyaa, Series & Películas con mpv, AniSkip y Anime4K.</i></p>
 
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge" alt="License" /></a>
