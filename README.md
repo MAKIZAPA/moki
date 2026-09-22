@@ -58,7 +58,7 @@
     <td width="50%">
       <img src="https://img.shields.io/badge/AUDIO_FILTER-LATINO_&_ESPAÑA-10b981?style=flat-square" alt="Audio" /><br/>
       <b>Filtro Estricto de Audio</b><br/>
-      Prioridad automática a pistas en <b>Español Latino</b> y <b>Castellano</b>. Bloqueo automático de seeds francesas mudas (<code>MULTi AD</code>).
+      Prioridad absoluta a <b>1080p Latino</b> y detección de encoders (<code>dem3nt3</code>, <code>Cinecalidad</code>, <code>LasCositas</code>). Diferenciación de subtítulos y bloqueo de falsos positivos.
     </td>
   </tr>
   <tr>
