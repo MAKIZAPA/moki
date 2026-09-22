@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # ==========================================================
-# CLI Latino Search & Stream Extractor (Flixlatam + MPV)
+# CLI Latino Multi-Provider Search & Stream Extractor
+# (Flixlatam + Cuevana 3 + JKAnime + mpv)
+# Cero Torrents • Audio Latino / Sub • Respaldo Automático
 # Autor: @makizapa
 # ==========================================================
 
@@ -11,6 +13,7 @@ import json
 import hashlib
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
@@ -110,7 +113,7 @@ def unpack_js_node(packed_str: str) -> str:
     p = subprocess.run(["node", "-e", js_code], capture_output=True, text=True)
     return p.stdout if p.returncode == 0 else ""
 
-def resolve_stream(session, embed_url: str):
+def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""):
     if not embed_url:
         return None, None
     code = embed_url.rstrip("/").split("/")[-1]
@@ -121,28 +124,30 @@ def resolve_stream(session, embed_url: str):
         f"https://filelions.to/v/{code}",
         f"https://smoothpre.com/v/{code}"
     ]
+    # Si embed_url ya era una url completa válida
+    if embed_url.startswith("http") and embed_url not in candidates:
+        candidates.insert(0, embed_url)
 
+    ref = custom_referer if custom_referer else "https://flixlatam.com/"
     headers = {
-        "Referer": "https://flixlatam.com/",
+        "Referer": ref,
         "User-Agent": USER_AGENT
     }
 
     for cand in candidates:
         try:
-            r = session.get(cand, headers=headers, timeout=7)
+            r = session.get(cand, headers=headers, timeout=6)
             if r.status_code == 200:
-                # Check for packed JS
                 if "eval(function(p,a,c,k,e,d)" in r.text:
                     unpacked = unpack_js_node(r.text)
                     m3u8s = re.findall(r"https?://[^\s\"\'<>]+\.m3u8[^\s\"\'<>]*", unpacked)
                     if m3u8s:
                         master_url = m3u8s[0]
-                        # Tentar obtener la sub-playlist de mayor resolución
                         try:
                             r_m = session.get(
                                 master_url,
                                 headers={"Referer": "https://flaswish.com/", "Origin": "https://flaswish.com", "User-Agent": USER_AGENT},
-                                timeout=5
+                                timeout=4
                             )
                             if r_m.status_code == 200 and "#EXT-X-STREAM-INF" in r_m.text:
                                 base_m = master_url[:master_url.rfind("/") + 1]
@@ -155,7 +160,6 @@ def resolve_stream(session, embed_url: str):
                             pass
                         return master_url, "https://flaswish.com/"
 
-                # Direct m3u8
                 direct_m3u8 = re.findall(r"https?://[^\s\"\'<>]+\.m3u8[^\s\"\'<>]*", r.text)
                 if direct_m3u8:
                     return direct_m3u8[0], cand
@@ -164,150 +168,520 @@ def resolve_stream(session, embed_url: str):
 
     return None, None
 
+# ==========================================================
+# 1. FLIXLATAM
+# ==========================================================
+
 def search_flixlatam(session, query: str):
-    url = f"https://flixlatam.com/search?s={query}"
-    r = session.get(url, timeout=10)
-    if r.status_code != 200:
+    try:
+        url = f"https://flixlatam.com/search?s={query}"
+        r = session.get(url, timeout=7)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        items = soup.select("article.item")
+        results = []
+        for it in items:
+            a = it.select_one(".data h3 a") or it.select_one(".poster a")
+            if not a:
+                continue
+            title = a.text.strip()
+            title = re.sub(r"^Ver\s+", "", title, flags=re.I)
+            title = re.sub(r"\s+online$", "", title, flags=re.I).strip()
+            href = a.get("href") or ""
+            poster_img = it.select_one(".poster img")
+            poster = poster_img.get("src") if poster_img else ""
+            year_el = it.select_one(".data span")
+            year = year_el.text.strip() if year_el else ""
+            rating_el = it.select_one(".rating")
+            rating = rating_el.text.strip() if rating_el else ""
+            is_tv = "/serie/" in href or "/anime/" in href
+
+            results.append({
+                "title": title,
+                "url": href,
+                "poster": poster,
+                "year": year,
+                "rating": rating,
+                "is_series": is_tv,
+                "is_anime": "/anime/" in href,
+                "provider": "flixlatam",
+                "provider_label": "FLIX"
+            })
+        return results
+    except Exception:
         return []
-    soup = BeautifulSoup(r.text, "html.parser")
-    items = soup.select("article.item")
-    results = []
-    for it in items:
-        a = it.select_one(".data h3 a") or it.select_one(".poster a")
-        if not a:
-            continue
-        title = a.text.strip()
-        title = re.sub(r"^Ver\s+", "", title, flags=re.I)
-        title = re.sub(r"\s+online$", "", title, flags=re.I).strip()
-        href = a.get("href") or ""
-        poster_img = it.select_one(".poster img")
-        poster = poster_img.get("src") if poster_img else ""
-        year_el = it.select_one(".data span")
-        year = year_el.text.strip() if year_el else ""
-        rating_el = it.select_one(".rating")
-        rating = rating_el.text.strip() if rating_el else ""
-        is_tv = "/serie/" in href or "/anime/" in href
 
-        results.append({
-            "title": title,
-            "url": href,
-            "poster": poster,
-            "year": year,
-            "rating": rating,
-            "is_series": is_tv
-        })
+def get_series_episodes_flixlatam(session, series_url: str):
+    try:
+        r = session.get(series_url, timeout=8)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        ep_elements = soup.select("ul.episodios li")
+        episodes = []
+        for el in ep_elements:
+            a = el.select_one(".episodiotitle a")
+            if not a:
+                continue
+            ep_href = a.get("href") or ""
+            if ep_href.startswith("/"):
+                ep_href = "https://flixlatam.com" + ep_href
+            ep_name = a.text.strip()
+            num_el = el.select_one(".numerando")
+            num_str = num_el.text.strip() if num_el else "1 - 1"
+            s_num = 1
+            e_num = 1
+            m = re.search(r"(\d+)\s*-\s*(\d+)", num_str)
+            if m:
+                s_num = int(m.group(1))
+                e_num = int(m.group(2))
+            episodes.append({
+                "name": ep_name,
+                "url": ep_href,
+                "season": s_num,
+                "episode": e_num
+            })
+        return episodes
+    except Exception:
+        return []
 
-    # Priorizar coincidencias exactas con el término buscado
+def extract_stream_flixlatam(session, page_url: str):
+    try:
+        r = session.get(page_url, timeout=8)
+        if r.status_code != 200:
+            return None, None, None
+        soup = BeautifulSoup(r.text, "html.parser")
+        iframe = soup.select_one("div.play iframe") or soup.select_one("iframe")
+        if not iframe:
+            return None, None, None
+        vid_src = iframe.get("src") or ""
+        if vid_src.startswith("/"):
+            vid_src = "https://flixlatam.com" + vid_src
+
+        headers = {
+            "Referer": page_url,
+            "User-Agent": USER_AGENT,
+            "Sec-Fetch-Dest": "iframe",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin"
+        }
+        r2 = session.get(vid_src, headers=headers, timeout=8)
+        if r2.status_code != 200:
+            return None, None, None
+
+        m_chal = re.search(r"const POW_CHALLENGE\s*=\s*'([^']+)'", r2.text)
+        m_diff = re.search(r"const POW_DIFFICULTY\s*=\s*(\d+)", r2.text)
+        m_salt = re.search(r"const POW_SALT\s*=\s*'([^']+)'", r2.text)
+        m_data = re.search(r"let\s+dataLink\s*=\s*(\[[\s\S]*?\]);", r2.text)
+
+        if not (m_chal and m_diff and m_salt and m_data):
+            return None, None, None
+
+        chal = m_chal.group(1)
+        diff = int(m_diff.group(1))
+        salt = m_salt.group(1)
+        data_list = json.loads(m_data.group(1))
+
+        key_hex = solve_pow(chal, diff, salt)
+
+        def lang_priority(entry):
+            lang = entry.get("video_language", "").upper()
+            if "LAT" in lang:
+                return 0
+            if "ESP" in lang:
+                return 1
+            return 2
+
+        data_list.sort(key=lang_priority)
+
+        for entry in data_list:
+            lang = entry.get("video_language", "LAT")
+            all_embeds = entry.get("sortedEmbeds", []) + entry.get("downloadEmbeds", [])
+            enc_links = [item["link"] for item in all_embeds if isinstance(item, dict) and "link" in item]
+            if not enc_links:
+                continue
+
+            decrypted_urls = decrypt_links_node(key_hex, enc_links)
+            for dec_url in decrypted_urls:
+                if not dec_url:
+                    continue
+                stream_url, ref = resolve_cyberlocker_stream(session, dec_url, custom_referer="https://flixlatam.com/")
+                if stream_url:
+                    return stream_url, ref, lang
+
+        return None, None, None
+    except Exception:
+        return None, None, None
+
+# ==========================================================
+# 2. CUEVANA 3 (cuevana3.eu)
+# ==========================================================
+
+def search_cuevana3(session, query: str):
+    try:
+        url = f"https://cuevana3.eu/search?q={query}"
+        r = session.get(url, timeout=7)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        sc = soup.find("script", id="__NEXT_DATA__")
+        if not sc:
+            return []
+        data = json.loads(sc.text)
+        movies = data["props"]["pageProps"].get("movies", [])
+        results = []
+        for m in movies:
+            name = m.get("titles", {}).get("name") or m.get("title") or ""
+            if not name:
+                continue
+            poster = m.get("images", {}).get("poster", "")
+            url_slug = m.get("url", {}).get("slug", "")
+            is_series = "series/" in url_slug
+            slug_name = m.get("slug", {}).get("name", "")
+            if not slug_name:
+                continue
+            full_url = f"https://cuevana3.eu/ver-serie/{slug_name}" if is_series else f"https://cuevana3.eu/ver-pelicula/{slug_name}"
+            
+            release = m.get("releaseDate", "")
+            year = release[:4] if release and len(release) >= 4 else ""
+            rate = m.get("rate", {}).get("average", "")
+            rating_str = f"{rate:.1f}" if isinstance(rate, (int, float)) and rate > 0 else ""
+
+            results.append({
+                "title": name,
+                "url": full_url,
+                "poster": poster,
+                "year": year,
+                "rating": rating_str,
+                "is_series": is_series,
+                "is_anime": False,
+                "provider": "cuevana3",
+                "provider_label": "CUEV3"
+            })
+        return results
+    except Exception:
+        return []
+
+def get_series_episodes_cuevana3(session, series_url: str):
+    try:
+        r = session.get(series_url, timeout=8)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        sc = soup.find("script", id="__NEXT_DATA__")
+        if not sc:
+            return []
+        data = json.loads(sc.text)
+        this_serie = data["props"]["pageProps"].get("thisSerie", {})
+        seasons = this_serie.get("seasons", [])
+        episodes = []
+        for s_idx, season in enumerate(seasons):
+            s_num = season.get("number") or (s_idx + 1)
+            eps = season.get("episodes", [])
+            for ep in eps:
+                slug_obj = ep.get("slug", {})
+                s_val = int(slug_obj.get("season") or s_num or 1)
+                e_val = int(slug_obj.get("episode") or ep.get("number") or 1)
+                name_val = slug_obj.get("name")
+                if not name_val:
+                    continue
+                ep_url = f"https://cuevana3.eu/episodio/{name_val}-temporada-{s_val}-episodio-{e_val}"
+                ep_title = ep.get("title") or f"Episodio {e_val}"
+                episodes.append({
+                    "name": ep_title,
+                    "url": ep_url,
+                    "season": s_val,
+                    "episode": e_val
+                })
+        return episodes
+    except Exception:
+        return []
+
+def extract_stream_cuevana3(session, page_url: str):
+    try:
+        r = session.get(page_url, timeout=8)
+        if r.status_code != 200:
+            return None, None, None
+        soup = BeautifulSoup(r.text, "html.parser")
+        sc = soup.find("script", id="__NEXT_DATA__")
+        if not sc:
+            return None, None, None
+        data = json.loads(sc.text)
+        page_props = data["props"]["pageProps"]
+        target = page_props.get("thisMovie") or page_props.get("episode")
+        if not target:
+            return None, None, None
+        videos = target.get("videos", {})
+
+        # Probar en orden de prioridad latino -> castellano -> subtitulado / inglés
+        for lang_key in ["latino", "spanish", "english"]:
+            v_list = videos.get(lang_key, [])
+            for v in v_list:
+                p_url = v.get("result")
+                if not p_url:
+                    continue
+                try:
+                    r_p = session.get(p_url, headers={"Referer": "https://cuevana3.eu/"}, timeout=5)
+                    m = re.search(r"var url\s*=\s*'([^']+)'", r_p.text)
+                    if m:
+                        host_url = m.group(1)
+                        st_url, ref = resolve_cyberlocker_stream(session, host_url, custom_referer="https://cuevana3.eu/")
+                        if st_url:
+                            return st_url, ref, lang_key.upper()
+                except Exception:
+                    continue
+        return None, None, None
+    except Exception:
+        return None, None, None
+
+# ==========================================================
+# 3. JKANIME (jkanime.net)
+# ==========================================================
+
+def search_jkanime(session, query: str):
+    try:
+        url = f"https://jkanime.net/buscar/{query}/"
+        r = session.get(url, timeout=7)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+        results = []
+        seen = set()
+        for item in soup.select("div.anime__item"):
+            a = item.find("a")
+            if not a:
+                continue
+            href = a.get("href") or ""
+            t_el = item.select_one("h5 a") or item.select_one(".anime__item__text h5") or a
+            t = t_el.text.strip() if t_el else ""
+            if href and t and href not in seen:
+                seen.add(href)
+                img = a.find("img")
+                poster = img.get("src") if img else ""
+                results.append({
+                    "title": t,
+                    "url": href,
+                    "poster": poster,
+                    "year": "",
+                    "rating": "",
+                    "is_series": True,
+                    "is_anime": True,
+                    "provider": "jkanime",
+                    "provider_label": "JKAN"
+                })
+        return results
+    except Exception:
+        return []
+
+def get_series_episodes_jkanime(session, anime_url: str):
+    try:
+        r = session.get(anime_url, timeout=8)
+        if r.status_code != 200:
+            return []
+        clean_url = anime_url.rstrip("/")
+        slug = clean_url.split("/")[-1]
+
+        total_eps = 0
+        m_last = re.search(r"Último episodio.*?href=[\'\"][^\'\"]*/(\d+)/", r.text, re.DOTALL)
+        if m_last:
+            total_eps = int(m_last.group(1))
+        else:
+            m = re.search(r"Episodios:\s*</span>\s*(\d+)", r.text)
+            if not m:
+                m = re.search(r"Episodios:\s*(\d+)", r.text)
+            if m:
+                total_eps = int(m.group(1))
+
+        if total_eps == 0:
+            total_eps = 1
+
+        episodes = []
+        for ep_num in range(1, total_eps + 1):
+            ep_url = f"https://jkanime.net/{slug}/{ep_num}/"
+            episodes.append({
+                "name": f"Capítulo {ep_num}",
+                "url": ep_url,
+                "season": 1,
+                "episode": ep_num
+            })
+        return episodes
+    except Exception:
+        return []
+
+def extract_stream_jkanime(session, ep_url: str):
+    try:
+        r = session.get(ep_url, timeout=8)
+        if r.status_code != 200:
+            return None, None, None
+        soup = BeautifulSoup(r.text, "html.parser")
+        scripts = [sc.text for sc in soup.find_all("script") if "video[" in sc.text]
+        iframes = []
+        for sc in scripts:
+            iframes.extend(re.findall(r"src=[\x27\x22](https://jkanime\.net/jkplayer/[^\x27\x22]+)[\x27\x22]", sc))
+
+        for ifr in iframes:
+            try:
+                r_ifr = session.get(ifr, headers={"Referer": ep_url}, timeout=6)
+                m3u8s = re.findall(r"url:\s*[\x27\x22]([^\x27\x22]+\.m3u8[^\x27\x22]*)[\x27\x22]", r_ifr.text)
+                if m3u8s:
+                    return m3u8s[0], "https://jkanime.net/", "SUB/LAT"
+            except Exception:
+                continue
+        return None, None, None
+    except Exception:
+        return None, None, None
+
+# ==========================================================
+# 4. BÚSQUEDA CONCURRENTE & AGREGACIÓN
+# ==========================================================
+
+def search_all_sources(session, query: str):
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_flix = ex.submit(search_flixlatam, session, query)
+        f_cuev = ex.submit(search_cuevana3, session, query)
+        f_jkan = ex.submit(search_jkanime, session, query)
+
+        res_flix = []
+        res_cuev = []
+        res_jkan = []
+
+        try:
+            res_flix = f_flix.result(timeout=8)
+        except Exception:
+            pass
+        try:
+            res_cuev = f_cuev.result(timeout=8)
+        except Exception:
+            pass
+        try:
+            res_jkan = f_jkan.result(timeout=8)
+        except Exception:
+            pass
+
+    combined = []
+    combined.extend(res_flix)
+    combined.extend(res_cuev)
+    combined.extend(res_jkan)
+
     q_norm = query.strip().lower()
     def rank_score(item):
         t = item["title"].lower()
         if t == q_norm:
-            return 0
-        if t.startswith(q_norm):
-            return 1
-        if q_norm in t:
-            return 2
-        return 3
+            score = 0
+        elif t.startswith(q_norm):
+            score = 1
+        elif q_norm in t:
+            score = 2
+        else:
+            score = 3
+        prov_weight = 0 if item["provider"] == "flixlatam" else (1 if item["provider"] == "cuevana3" else 2)
+        return (score, prov_weight)
 
-    results.sort(key=rank_score)
-    return results
+    combined.sort(key=rank_score)
+    return combined
 
-def get_series_episodes(session, series_url: str):
-    r = session.get(series_url, timeout=10)
-    if r.status_code != 200:
-        return []
-    soup = BeautifulSoup(r.text, "html.parser")
-    ep_elements = soup.select("ul.episodios li")
-    episodes = []
-    for el in ep_elements:
-        a = el.select_one(".episodiotitle a")
-        if not a:
-            continue
-        ep_href = a.get("href") or ""
-        ep_name = a.text.strip()
-        num_el = el.select_one(".numerando")
-        num_str = num_el.text.strip() if num_el else "1 - 1"
-        s_num = 1
-        e_num = 1
-        m = re.search(r"(\d+)\s*-\s*(\d+)", num_str)
-        if m:
-            s_num = int(m.group(1))
-            e_num = int(m.group(2))
-        episodes.append({
-            "name": ep_name,
-            "url": ep_href,
-            "season": s_num,
-            "episode": e_num
-        })
-    return episodes
+def get_episodes_for_item(session, item: dict):
+    prov = item.get("provider")
+    url = item.get("url", "")
+    if prov == "flixlatam":
+        return get_series_episodes_flixlatam(session, url)
+    elif prov == "cuevana3":
+        return get_series_episodes_cuevana3(session, url)
+    elif prov == "jkanime":
+        return get_series_episodes_jkanime(session, url)
+    return []
 
-def extract_stream_from_page(session, page_url: str):
-    r = session.get(page_url, timeout=10)
-    if r.status_code != 200:
-        return None, None
-    soup = BeautifulSoup(r.text, "html.parser")
-    iframe = soup.select_one("div.play iframe") or soup.select_one("iframe")
-    if not iframe:
-        return None, None
-    vid_src = iframe.get("src") or ""
-    if vid_src.startswith("/"):
-        vid_src = "https://flixlatam.com" + vid_src
+def extract_stream_direct(session, provider: str, page_url: str):
+    if provider == "flixlatam":
+        return extract_stream_flixlatam(session, page_url)
+    elif provider == "cuevana3":
+        return extract_stream_cuevana3(session, page_url)
+    elif provider == "jkanime":
+        return extract_stream_jkanime(session, page_url)
+    return None, None, None
 
-    headers = {
-        "Referer": page_url,
-        "User-Agent": USER_AGENT,
-        "Sec-Fetch-Dest": "iframe",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin"
-    }
-    r2 = session.get(vid_src, headers=headers, timeout=10)
-    if r2.status_code != 200:
-        return None, None
+def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dict, all_results: list):
+    primary_prov = chosen_item.get("provider", "flixlatam")
+    primary_label = chosen_item.get("provider_label", "FLIX")
+    is_series = chosen_item.get("is_series", False)
+    title = chosen_item.get("title", "")
+    target_season = chosen_ep_info.get("season", 1) if chosen_ep_info else 1
+    target_ep = chosen_ep_info.get("episode", 1) if chosen_ep_info else 1
+    target_url = chosen_ep_info.get("url") if chosen_ep_info else chosen_item.get("url")
 
-    m_chal = re.search(r"const POW_CHALLENGE\s*=\s*'([^']+)'", r2.text)
-    m_diff = re.search(r"const POW_DIFFICULTY\s*=\s*(\d+)", r2.text)
-    m_salt = re.search(r"const POW_SALT\s*=\s*'([^']+)'", r2.text)
-    m_data = re.search(r"let\s+dataLink\s*=\s*(\[[\s\S]*?\]);", r2.text)
+    # Intento 1: Proveedor seleccionado
+    st_url, ref, lang = extract_stream_direct(session, primary_prov, target_url)
+    if st_url:
+        return st_url, ref, lang
 
-    if not (m_chal and m_diff and m_salt and m_data):
-        return None, None
+    # Si falló, intentar fallback automático
+    log(f"\n{YELLOW}:: [AVISO] Servidor no respondió en {primary_label}.{NC}")
+    log(f"{CYAN}:: Activando respaldo automático en servidores alternativos (Cuevana 3 / Flixlatam / JKAnime)...{NC}")
 
-    chal = m_chal.group(1)
-    diff = int(m_diff.group(1))
-    salt = m_salt.group(1)
-    data_list = json.loads(m_data.group(1))
+    # Fallback order
+    fb_providers = []
+    if primary_prov == "flixlatam":
+        fb_providers = ["cuevana3", "jkanime"]
+    elif primary_prov == "cuevana3":
+        fb_providers = ["flixlatam", "jkanime"]
+    else:
+        fb_providers = ["cuevana3", "flixlatam"]
 
-    # PoW
-    key_hex = solve_pow(chal, diff, salt)
+    for fb_prov in fb_providers:
+        fb_label = "CUEV3" if fb_prov == "cuevana3" else ("FLIX" if fb_prov == "flixlatam" else "JKAN")
+        # Buscar en all_results primero
+        matching_fb = [
+            it for it in all_results
+            if it.get("provider") == fb_prov and it.get("is_series", False) == is_series
+        ]
 
-    # Ordenar por prioridad de idioma: LAT (Latino) -> ESP (Castellano) -> SUB (Subtitulado)
-    def lang_priority(entry):
-        lang = entry.get("video_language", "").upper()
-        if "LAT" in lang:
-            return 0
-        if "ESP" in lang:
-            return 1
-        return 2
+        # Si no estaba en all_results, buscarlo en vivo
+        if not matching_fb:
+            if fb_prov == "cuevana3":
+                matching_fb = [it for it in search_cuevana3(session, title) if it.get("is_series", False) == is_series]
+            elif fb_prov == "flixlatam":
+                matching_fb = [it for it in search_flixlatam(session, title) if it.get("is_series", False) == is_series]
+            elif fb_prov == "jkanime":
+                matching_fb = [it for it in search_jkanime(session, title)]
 
-    data_list.sort(key=lang_priority)
-
-    # Recorrer opciones de idioma y servidores
-    for entry in data_list:
-        lang = entry.get("video_language", "LAT")
-        all_embeds = entry.get("sortedEmbeds", []) + entry.get("downloadEmbeds", [])
-        enc_links = [item["link"] for item in all_embeds if isinstance(item, dict) and "link" in item]
-        if not enc_links:
+        if not matching_fb:
             continue
 
-        decrypted_urls = decrypt_links_node(key_hex, enc_links)
-        for dec_url in decrypted_urls:
-            if not dec_url:
-                continue
-            stream_url, ref = resolve_stream(session, dec_url)
-            if stream_url:
-                return stream_url, ref, lang
+        fb_media = matching_fb[0]
+        log(f"{BLUE}:: Comprobando alternativa en {fb_label}: '{fb_media['title']}'...{NC}")
+
+        if is_series:
+            fb_eps = get_episodes_for_item(session, fb_media)
+            chosen_fb_ep = None
+            for ep in fb_eps:
+                if ep["season"] == target_season and ep["episode"] == target_ep:
+                    chosen_fb_ep = ep
+                    break
+            if not chosen_fb_ep:
+                # Intentar coincidencia sólo por número de capítulo
+                for ep in fb_eps:
+                    if ep["episode"] == target_ep:
+                        chosen_fb_ep = ep
+                        break
+
+            if chosen_fb_ep:
+                fb_st, fb_ref, fb_lang = extract_stream_direct(session, fb_prov, chosen_fb_ep["url"])
+                if fb_st:
+                    log(f"{GREEN}:: ¡Respaldo exitoso en {fb_label}! Transmitiendo capítulo {target_ep}.{NC}")
+                    return fb_st, fb_ref, f"{fb_lang} ({fb_label})"
+        else:
+            # Película
+            fb_st, fb_ref, fb_lang = extract_stream_direct(session, fb_prov, fb_media["url"])
+            if fb_st:
+                log(f"{GREEN}:: ¡Respaldo exitoso en {fb_label}! Transmitiendo película.{NC}")
+                return fb_st, fb_ref, f"{fb_lang} ({fb_label})"
 
     return None, None, None
+
+# ==========================================================
+# 5. ENTRY POINT PRINCIPAL
+# ==========================================================
 
 def main():
     query = ""
@@ -316,7 +690,6 @@ def main():
 
     args = sys.argv[1:]
     if args:
-        # Detectar si pasaron query y temporada/capitulo: "The Boys" 2 4
         if len(args) >= 3 and args[-2].isdigit() and args[-1].isdigit():
             target_season = int(args[-2])
             target_episode = int(args[-1])
@@ -329,9 +702,10 @@ def main():
 
     if not query.strip():
         log(f"{CYAN}{BOLD}╔══════════════════════════════════════════════════════════════╗{NC}")
-        log(f"{CYAN}{BOLD}║   :: MOKI - BÚSQUEDA WEB AUDIO LATINO (Sin Torrents)         ║{NC}")
+        log(f"{CYAN}{BOLD}║   :: MOKI - BÚSQUEDA WEB MULTI-SERVIDOR (Sin Torrents)       ║{NC}")
+        log(f"{CYAN}{BOLD}║   :: Flixlatam • Cuevana 3 • JKAnime • Respaldo Automático   ║{NC}")
         log(f"{CYAN}{BOLD}╚══════════════════════════════════════════════════════════════╝{NC}")
-        log(f"{YELLOW}Ingresa el nombre de la película o serie a buscar: {NC}", end="")
+        log(f"{YELLOW}Ingresa el nombre de la película, serie o anime a buscar: {NC}", end="")
         try:
             query = sys.stdin.readline().strip()
         except KeyboardInterrupt:
@@ -340,79 +714,107 @@ def main():
     if not query.strip():
         sys.exit(0)
 
-    log(f"\n{GREEN}:: Buscando en catálogo latino '{query}'...{NC}")
+    log(f"\n{GREEN}:: Buscando en catálogo multi-servidor '{query}'...{NC}")
     session = requests.Session(impersonate="chrome120")
-    results = search_flixlatam(session, query)
+    results = search_all_sources(session, query)
 
     if not results:
-        log(f"{RED}:: No se encontraron resultados en audio latino para '{query}'.{NC}")
+        log(f"{RED}:: No se encontraron resultados en los servidores para '{query}'.{NC}")
         sys.exit(1)
 
-    # Menú de selección interactivo
     fzf_lines = []
     for i, r in enumerate(results, 1):
-        type_tag = f"{PURPLE}[SERIE]{NC}" if r["is_series"] else f"{CYAN}[PELI] {NC}"
-        year_str = f"({r['year']})" if r['year'] else ""
-        rating_str = f"★ {r['rating']}" if r['rating'] else ""
-        line = f"{CYAN}[{i:2d}]{NC} {type_tag} {BOLD}{r['title']}{NC}  {YELLOW}{year_str}{NC} {GREEN}{rating_str}{NC}"
+        if r["provider_label"] == "FLIX":
+            prov_badge = f"{GREEN}[FLIX] {NC}"
+        elif r["provider_label"] == "CUEV3":
+            prov_badge = f"{BLUE}[CUEV3]{NC}"
+        else:
+            prov_badge = f"{PURPLE}[JKAN] {NC}"
+
+        if r.get("is_anime"):
+            type_tag = f"{YELLOW}[ANIME]{NC}"
+        elif r.get("is_series"):
+            type_tag = f"{PURPLE}[SERIE]{NC}"
+        else:
+            type_tag = f"{CYAN}[PELI] {NC}"
+
+        year_str = f"({r['year']})" if r.get("year") else ""
+        rating_str = f"★ {r['rating']}" if r.get("rating") else ""
+        line = f"{CYAN}[{i:2d}]{NC} {prov_badge} {type_tag} {BOLD}{r['title']}{NC}  {YELLOW}{year_str}{NC} {GREEN}{rating_str}{NC}"
         fzf_lines.append(line)
 
-    c_idx, used_fzf = select_with_fzf(
-        fzf_lines,
-        prompt="🔎 Seleccionar: ",
-        header=f"Resultados para '{query}' | ↑↓ Moverse | Enter = Seleccionar | Esc = Salir"
-    )
-
     chosen = None
-    if used_fzf:
-        if c_idx is None:
-            sys.exit(0)
-        chosen = results[c_idx]
-    else:
-        log(f"\n{GREEN}Resultados encontrados:{NC}")
-        for l in fzf_lines:
-            log(f"  {l}")
-        while True:
-            log(f"\n{YELLOW}Elige una opción (1-{len(results)}) o 'q' para salir: {NC}", end="")
-            ans = sys.stdin.readline().strip()
-            if ans.lower() in ("q", "quit", "exit", ""):
-                sys.exit(0)
-            if ans.isdigit() and 1 <= int(ans) <= len(results):
-                chosen = results[int(ans) - 1]
+    # Si viene con temporada o capítulo específico vía CLI y coincide un resultado exacto
+    if (target_season is not None or target_episode is not None) and len(results) > 0:
+        # Priorizar coincidencias exactas que sean series
+        for r in results:
+            if r.get("is_series") and r["title"].strip().lower() == query.strip().lower():
+                chosen = r
                 break
-            log(f"{RED}Opción inválida.{NC}")
+        if not chosen:
+            # Siguiente mejor serie
+            for r in results:
+                if r.get("is_series"):
+                    chosen = r
+                    break
+        if not chosen:
+            chosen = results[0]
+
+    if not chosen:
+        c_idx, used_fzf = select_with_fzf(
+            fzf_lines,
+            prompt="🔎 Seleccionar: ",
+            header=f"Resultados para '{query}' | ↑↓ Moverse | Enter = Seleccionar | Esc = Salir"
+        )
+
+        if used_fzf:
+            if c_idx is None:
+                sys.exit(0)
+            chosen = results[c_idx]
+        else:
+            log(f"\n{GREEN}Resultados encontrados:{NC}")
+            for l in fzf_lines:
+                log(f"  {l}")
+            while True:
+                log(f"\n{YELLOW}Elige una opción (1-{len(results)}) o 'q' para salir: {NC}", end="")
+                ans = sys.stdin.readline().strip()
+                if ans.lower() in ("q", "quit", "exit", ""):
+                    sys.exit(0)
+                if ans.isdigit() and 1 <= int(ans) <= len(results):
+                    chosen = results[int(ans) - 1]
+                    break
+                log(f"{RED}Opción inválida.{NC}")
 
     if not chosen:
         sys.exit(0)
 
     media_title = chosen["title"]
-    media_poster = chosen["poster"]
-    is_series = chosen["is_series"]
-    selected_page_url = chosen["url"]
+    media_poster = chosen.get("poster", "")
+    is_series = chosen.get("is_series", False)
     selected_season = 1
     selected_ep_num = 1
     ep_name = "Película"
+    chosen_ep_info = None
 
     if is_series:
-        log(f"\n{GREEN}:: Cargando lista de episodios para '{media_title}'...{NC}")
-        episodes = get_series_episodes(session, chosen["url"])
+        log(f"\n{GREEN}:: Cargando lista de episodios desde [{chosen['provider_label']}] para '{media_title}'...{NC}")
+        episodes = get_episodes_for_item(session, chosen)
         if not episodes:
-            log(f"{RED}:: No se pudieron obtener los episodios de la serie.{NC}")
+            log(f"{RED}:: No se pudieron obtener los episodios en {chosen['provider_label']}.{NC}")
             sys.exit(1)
 
-        chosen_ep = None
         if target_season is not None and target_episode is not None:
             for ep in episodes:
                 if ep["season"] == target_season and ep["episode"] == target_episode:
-                    chosen_ep = ep
+                    chosen_ep_info = ep
                     break
         elif target_episode is not None:
             for ep in episodes:
                 if ep["episode"] == target_episode:
-                    chosen_ep = ep
+                    chosen_ep_info = ep
                     break
 
-        if not chosen_ep:
+        if not chosen_ep_info:
             ep_lines = []
             for i, ep in enumerate(episodes, 1):
                 ep_tag = f"T{ep['season']:02d}E{ep['episode']:02d}"
@@ -421,13 +823,13 @@ def main():
             c_ep_idx, used_fzf_ep = select_with_fzf(
                 ep_lines,
                 prompt="🔎 Seleccionar capítulo: ",
-                header=f"{media_title} • Total episodios: {len(episodes)} | ↑↓ Moverse | Enter = Ver"
+                header=f"{media_title} [{chosen['provider_label']}] • Total: {len(episodes)} | ↑↓ Moverse | Enter = Ver"
             )
 
             if used_fzf_ep:
                 if c_ep_idx is None:
                     sys.exit(0)
-                chosen_ep = episodes[c_ep_idx]
+                chosen_ep_info = episodes[c_ep_idx]
             else:
                 for l in ep_lines:
                     log(f"  {l}")
@@ -437,27 +839,24 @@ def main():
                     if ans.lower() in ("q", "quit", "exit", ""):
                         sys.exit(0)
                     if ans.isdigit() and 1 <= int(ans) <= len(episodes):
-                        chosen_ep = episodes[int(ans) - 1]
+                        chosen_ep_info = episodes[int(ans) - 1]
                         break
                     log(f"{RED}Opción inválida.{NC}")
 
-        selected_page_url = chosen_ep["url"]
-        if selected_page_url.startswith("/"):
-            selected_page_url = "https://flixlatam.com" + selected_page_url
-        selected_season = chosen_ep["season"]
-        selected_ep_num = chosen_ep["episode"]
-        ep_name = f"Temporada {selected_season} • Episodio {selected_ep_num} ({chosen_ep['name']})"
+        if chosen_ep_info:
+            selected_season = chosen_ep_info["season"]
+            selected_ep_num = chosen_ep_info["episode"]
+            ep_name = f"Temporada {selected_season} • Episodio {selected_ep_num} ({chosen_ep_info['name']})"
 
-    log(f"\n{CYAN}:: Extrayendo stream en audio latino para {BOLD}{media_title}{NC}...")
-    stream_url, referer, lang = extract_stream_from_page(session, selected_page_url)
+    log(f"\n{CYAN}:: Extrayendo stream para {BOLD}{media_title}{NC}...")
+    stream_url, referer, lang = extract_stream_with_fallback(session, chosen, chosen_ep_info, results)
 
     if not stream_url:
-        log(f"{RED}:: No se pudo resolver un stream activo en este momento.{NC}")
+        log(f"{RED}:: No se pudo resolver un stream activo en ninguno de los servidores disponibles.{NC}")
         sys.exit(1)
 
     log(f"{GREEN}:: Stream verificado con éxito [{lang}]. Iniciando reproductor mpv...{NC}\n")
 
-    # Imprimir variables en stdout para que el launcher bash las capture limpiamente
     print(f"STREAM_URL:{stream_url}")
     print(f"REFERER:{referer}")
     print(f"TITLE:{media_title}")

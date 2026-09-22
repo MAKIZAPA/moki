@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==========================================================
-# ✨ MOKI - Latino Streamer (Web Scraping + mpv)
-# Cero Torrents • Audio Latino • Cero Desgaste SSD (100% RAM)
+# CLI Latino Multi-Streamer (Flixlatam + Cuevana 3 + JKAnime + mpv)
+# Cero Torrents • Audio Latino / Sub • Cero Desgaste SSD (100% RAM)
 # Autor: @makizapa
 # ==========================================================
 
@@ -53,7 +53,7 @@ play_web_stream() {
 EOF
 
     echo -e "\n${GREEN}:: Conexión establecida. Transmitiendo stream en mpv...${NC}"
-    echo -e "${CYAN}:: Audio: Español Latino • Aceleración por hardware activa${NC}"
+    echo -e "${CYAN}:: Audio: Latino / Multi-Servidor • Aceleración por hardware activa${NC}"
     echo -e "${YELLOW}Atajos: [f] pantalla completa | [a] audio | [j] subtítulos | [Shift+N] siguiente capítulo | [q] salir${NC}\n"
 
     local display_title="MOKI • $title"

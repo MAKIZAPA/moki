@@ -75,9 +75,9 @@
   </tr>
   <tr>
     <td width="50%">
-      <img src="https://img.shields.io/badge/WEB_STREAM-AUDIO_LATINO-10b981?style=flat-square" alt="Latino Web" /><br/>
-      <b>Audio Latino (Web Scraping)</b><br/>
-      Acceso directo a películas y series completas con doblaje en Español Latino sin depender de semillas P2P ni enjambres torrent. Resolución 1080p directa mediante HLS/m3u8 en MPV.
+      <img src="https://img.shields.io/badge/WEB_STREAM-MULTI--PROVIDER-10b981?style=flat-square" alt="Latino Web" /><br/>
+      <b>Audio Latino (Multi-Servidor & Failover)</b><br/>
+      Acceso directo a películas, series y anime en Español Latino sin depender de semillas P2P. Búsqueda concurrente y respaldo automático entre <b>Flixlatam</b>, <b>Cuevana 3</b> y <b>JKAnime</b> en MPV vía HLS/m3u8 a 1080p.
     </td>
     <td width="50%">
       <img src="https://img.shields.io/badge/RESUME-SMART_HISTORY-blue?style=flat-square" alt="Continuar" /><br/>
