@@ -36,6 +36,7 @@ play_stream() {
     local release_title="${10:-}"
     local file_idx="${11:-}"
     local is_interactive="${12:-}"
+    local season="${13:-1}"
     local out_dir="/tmp/webtorrent"
 
     # Limpieza de carpetas de streaming previas
@@ -47,7 +48,7 @@ play_stream() {
 {
   "title": "$title",
   "type": "anime",
-  "season": 1,
+  "season": $season,
   "episode": "$episode",
   "episode_num": $ep_num,
   "start_time": $start_time,
@@ -119,6 +120,7 @@ run_search_and_play() {
         is_batch=$(echo "$output" | grep "^IS_BATCH:" | head -n1 | cut -d':' -f2-)
         size_gb=$(echo "$output" | grep "^SIZE_GB:" | head -n1 | cut -d':' -f2-)
         title=$(echo "$output" | grep "^TITLE:" | head -n1 | cut -d':' -f2-)
+        season=$(echo "$output" | grep "^SEASON:" | head -n1 | cut -d':' -f2-)
         episode=$(echo "$output" | grep "^EPISODE:" | head -n1 | cut -d':' -f2-)
         ep_num=$(echo "$output" | grep "^EPISODE_NUM:" | head -n1 | cut -d':' -f2-)
         poster=$(echo "$output" | grep "^POSTER:" | head -n1 | cut -d':' -f2-)
@@ -126,6 +128,7 @@ run_search_and_play() {
         group=$(echo "$output" | grep "^GROUP:" | head -n1 | cut -d':' -f2-)
         release_title=$(echo "$output" | grep "^RELEASE_TITLE:" | head -n1 | cut -d':' -f2-)
 
+        [ -z "$season" ] && season=1
         [ -z "$ep_num" ] && ep_num=1
         [ -z "$mal_id" ] && mal_id=0
         local start_time="${RESUME_START_TIME:-0}"
@@ -137,11 +140,11 @@ run_search_and_play() {
         fi
 
         if [ -z "$magnet" ]; then
-            magnet=$(echo "$output" | grep -v "^SIZE_" | grep -v "^TITLE:" | grep -v "^EPISODE:" | grep -v "^EPISODE_NUM:" | grep -v "^TYPE:" | grep -v "^POSTER:" | grep -v "^MAL_ID:" | grep -v "^GROUP:" | grep -v "^RELEASE_TITLE:" | grep -v -E "^FILE_?IDX:" | grep -v "^IS_BATCH:" | tr -d '\r\n')
+            magnet=$(echo "$output" | grep -v "^SIZE_" | grep -v "^TITLE:" | grep -v "^SEASON:" | grep -v "^EPISODE:" | grep -v "^EPISODE_NUM:" | grep -v "^TYPE:" | grep -v "^POSTER:" | grep -v "^MAL_ID:" | grep -v "^GROUP:" | grep -v "^RELEASE_TITLE:" | grep -v -E "^FILE_?IDX:" | grep -v "^IS_BATCH:" | tr -d '\r\n')
         fi
 
         if [ -n "$magnet" ]; then
-            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title" "$file_idx" "$interactive_arg"
+            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title" "$file_idx" "$interactive_arg" "$season"
         else
             break
         fi
@@ -149,19 +152,29 @@ run_search_and_play() {
         # Comprobar si Modo Maratón solicitó el siguiente capítulo
         if [ -f /tmp/marathon_next.json ]; then
             local next_ep
+            local next_season
             local next_title
             local next_grp
             next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
+            next_season=$(jq -r '.season // 1' /tmp/marathon_next.json 2>/dev/null)
             next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
             next_grp=$(jq -r '.group // empty' /tmp/marathon_next.json 2>/dev/null)
             rm -f /tmp/marathon_next.json
 
             if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
+                local s_label=""
+                if [ -n "$next_season" ] && [ "$next_season" -gt 1 ]; then
+                    s_label=" (T${next_season})"
+                fi
                 echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
-                echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep} de ${next_title}...   ║${NC}"
+                echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep}${s_label} de ${next_title}...   ║${NC}"
                 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
                 export RESUME_START_TIME=0
-                current_query="$next_title $next_ep"
+                if [ -n "$next_season" ] && [ "$next_season" -gt 1 ]; then
+                    current_query="\"$next_title\" $next_season $next_ep"
+                else
+                    current_query="\"$next_title\" $next_ep"
+                fi
                 # Recordar el grupo de fansub (ej. VARYG, AnoZu, etc.) para emparejamiento automático
                 if [ -n "$next_grp" ]; then
                     export PREF_GROUP="$next_grp"
@@ -180,11 +193,11 @@ run_search_and_play() {
 # Ayuda
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo -e "${CYAN}${BOLD}Uso de 'anime':${NC}"
-    echo -e "  ${GREEN}anime${NC}                                 Menú principal interactivo"
-    echo -e "  ${GREEN}anime voz${NC}                             Buscar hablando por el micrófono"
-    echo -e "  ${GREEN}anime buscar <nombre> [capítulo]${NC}      Busca por texto (ej. anime buscar Dandadan 1)"
-    echo -e "  ${GREEN}anime \"<enlace_magnet>\"${NC}               Reproduce el magnet directamente"
-    echo -e "  ${GREEN}anime -i \"<enlace_magnet>\"${NC}            Modo interactivo (elegir capítulo si es pack)"
+    echo -e "  ${GREEN}anime${NC}                                              Menú principal interactivo"
+    echo -e "  ${GREEN}anime voz${NC}                                          Buscar hablando por el micrófono"
+    echo -e "  ${GREEN}anime buscar <nombre> [temporada] [capítulo]${NC}        Busca por texto (ej. anime buscar \"Mushoku Tensei\" 2 5)"
+    echo -e "  ${GREEN}anime \"<enlace_magnet>\"${NC}                            Reproduce el magnet directamente"
+    echo -e "  ${GREEN}anime -i \"<enlace_magnet>\"${NC}                         Modo interactivo (elegir capítulo si es pack)"
     exit 0
 fi
 
@@ -216,13 +229,18 @@ if [[ "$1" == magnet:\?* || "$1" == *.torrent || "$1" == http://* || "$1" == htt
     # Si Shift+N o fin de video activó Modo Maratón, continuar al siguiente capítulo
     while [ -f /tmp/marathon_next.json ]; do
         next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
+        next_season=$(jq -r '.season // 1' /tmp/marathon_next.json 2>/dev/null)
         next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
         next_grp=$(jq -r '.group // empty' /tmp/marathon_next.json 2>/dev/null)
         rm -f /tmp/marathon_next.json
 
         if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
+            local s_label=""
+            if [ -n "$next_season" ] && [ "$next_season" -gt 1 ]; then
+                s_label=" (T${next_season})"
+            fi
             echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
-            echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep} de ${next_title}...   ║${NC}"
+            echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep}${s_label} de ${next_title}...   ║${NC}"
             echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
             export RESUME_START_TIME=0
             if [ -n "$next_grp" ]; then
@@ -230,7 +248,11 @@ if [[ "$1" == magnet:\?* || "$1" == *.torrent || "$1" == http://* || "$1" == htt
             elif [ -n "$9" ]; then
                 export PREF_GROUP="$9"
             fi
-            run_search_and_play "$next_title $next_ep"
+            if [ -n "$next_season" ] && [ "$next_season" -gt 1 ]; then
+                run_search_and_play "\"$next_title\" $next_season $next_ep"
+            else
+                run_search_and_play "\"$next_title\" $next_ep"
+            fi
             break
         fi
     done
