@@ -35,9 +35,59 @@ local function write_json(path, data)
     return true
 end
 
+-- Obtener o inferir información de medios
+local function get_media_info()
+    if media_info and media_info.title and media_info.title ~= "" then
+        return media_info
+    end
+    media_info = read_json(MEDIA_FILE)
+    if media_info and media_info.title and media_info.title ~= "" then
+        return media_info
+    end
+
+    -- Fallback inteligente: inferir nombre, capítulo y grupo desde el archivo en reproducción
+    local raw = mp.get_property("filename") or mp.get_property("media-title") or ""
+    local clean_raw = raw:gsub("%.%w+$", ""):gsub("^%b[]%s*", ""):gsub("^%(.-%)%s*", "")
+    local inferred_title = raw
+    local inferred_ep = 1
+    local inferred_season = 1
+
+    local n_s, s_num, e_num = clean_raw:match("^(.-)[%s%.%-_]+[Ss](%d+)[Ee](%d+)")
+    if n_s then
+        inferred_title = n_s:gsub("[%._]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+        inferred_season = tonumber(s_num) or 1
+        inferred_ep = tonumber(e_num) or 1
+    else
+        local n_e, ep_only = clean_raw:match("^(.-)[%s%.%-_]+[Ee](%d+)")
+        if n_e then
+            inferred_title = n_e:gsub("[%._]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+            inferred_ep = tonumber(ep_only) or 1
+        else
+            local n_dash, d_ep = clean_raw:match("^(.-)%s+-%s+(%d+)")
+            if n_dash then
+                inferred_title = n_dash:gsub("[%._]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                inferred_ep = tonumber(d_ep) or 1
+            end
+        end
+    end
+
+    local g = raw:match("^%[(.-)%]") or raw:match("%-([%w_]+)%.%w+$") or raw:match("%-([%w_]+)%s*%b()") or ""
+
+    media_info = {
+        title = inferred_title,
+        type = "anime",
+        season = inferred_season,
+        episode_num = inferred_ep,
+        group = g
+    }
+    return media_info
+end
+
 -- Ejecutar el salto al siguiente capítulo
 local function trigger_marathon_next()
-    if triggered_next or not media_info then return end
+    if triggered_next then return end
+    local m = get_media_info()
+    if not m then return end
     triggered_next = true
 
     if countdown_timer then
@@ -45,18 +95,19 @@ local function trigger_marathon_next()
         countdown_timer = nil
     end
 
-    local cur_ep = tonumber(media_info.episode_num) or 1
+    local cur_ep = tonumber(m.episode_num) or 1
     local next_data = {
         next = true,
-        title = media_info.title,
-        type = media_info.type or "anime",
-        season = tonumber(media_info.season) or 1,
-        next_ep = cur_ep + 1
+        title = m.title,
+        type = m.type or "anime",
+        season = tonumber(m.season) or 1,
+        next_ep = cur_ep + 1,
+        group = m.group or ""
     }
 
     write_json(MARATHON_NEXT_FILE, next_data)
     mp.osd_message(string.format("🍿 Modo Maratón: Cargando Capítulo %d...", cur_ep + 1), 3)
-    mp.add_timeout(0.5, function()
+    mp.add_timeout(0.3, function()
         mp.command("quit")
     end)
 end
@@ -66,7 +117,9 @@ local function start_countdown()
     if triggered_next or countdown_timer then return end
     countdown_val = 5
 
-    local cur_ep = tonumber(media_info.episode_num) or 1
+    local m = get_media_info()
+    if not m then return end
+    local cur_ep = tonumber(m.episode_num) or 1
     local next_ep = cur_ep + 1
 
     countdown_timer = mp.add_periodic_timer(1.0, function()
@@ -89,8 +142,8 @@ mp.register_event("file-loaded", function()
         countdown_timer = nil
     end
 
-    -- Solo activar para animes o series
-    if media_info and (media_info.type == "anime" or media_info.type == "series") then
+    local m = get_media_info()
+    if m and (m.type == "anime" or m.type == "series") then
         -- keep-open permite mostrar la cuenta regresiva en vez de cerrar en negro
         mp.set_property("keep-open", "always")
     end
@@ -98,32 +151,35 @@ end)
 
 -- Detectar final del video (al llegar al 100% o EOF)
 mp.observe_property("eof-reached", "bool", function(_, eof)
-    if eof and media_info and (media_info.type == "anime" or media_info.type == "series") then
-        start_countdown()
+    if eof then
+        local m = get_media_info()
+        if m and (m.type == "anime" or m.type == "series") then
+            start_countdown()
+        end
     end
 end)
 
--- Detectar si estamos a menos de 10 segundos del final
+-- Detectar si estamos a menos de 8 segundos del final
 mp.observe_property("time-pos", "number", function(_, time_pos)
-    if not time_pos or not media_info then return end
+    if not time_pos then return end
     local duration = mp.get_property_number("duration") or 0
     if duration > 60 and time_pos >= (duration - 8) and not countdown_timer and not triggered_next then
-        if media_info.type == "anime" or media_info.type == "series" then
+        local m = get_media_info()
+        if m and (m.type == "anime" or m.type == "series") then
             start_countdown()
         end
     end
 end)
 
 -- Atajo Shift+N: Saltar manualmente al siguiente capítulo en cualquier momento
-mp.add_key_binding("N", "marathon-next", function()
-    if media_info and (media_info.type == "anime" or media_info.type == "series") then
-        trigger_marathon_next()
-    end
-end)
+mp.add_key_binding("N", "marathon-next", trigger_marathon_next)
+mp.add_key_binding("Shift+n", "marathon-next-shift", trigger_marathon_next)
+mp.add_key_binding("Shift+N", "marathon-next-shift-upper", trigger_marathon_next)
 
 -- Atajo ENTER: Aceptar de inmediato si está la cuenta regresiva
 mp.add_key_binding("ENTER", "marathon-confirm-now", function()
-    if countdown_timer or (media_info and (media_info.type == "anime" or media_info.type == "series")) then
+    local m = get_media_info()
+    if countdown_timer or (m and (m.type == "anime" or m.type == "series")) then
         local percent = mp.get_property_number("percent-pos") or 0
         if percent >= 85 or countdown_timer then
             trigger_marathon_next()

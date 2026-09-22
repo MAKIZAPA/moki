@@ -135,8 +135,10 @@ run_search_and_play() {
         if [ -f /tmp/marathon_next.json ]; then
             local next_ep
             local next_title
+            local next_grp
             next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
             next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
+            next_grp=$(jq -r '.group // empty' /tmp/marathon_next.json 2>/dev/null)
             rm -f /tmp/marathon_next.json
 
             if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
@@ -145,7 +147,9 @@ run_search_and_play() {
                 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
                 current_query="$next_title $next_ep"
                 # Recordar el grupo de fansub (ej. VARYG, AnoZu, etc.) para emparejamiento automático
-                if [ -n "$group" ]; then
+                if [ -n "$next_grp" ]; then
+                    export PREF_GROUP="$next_grp"
+                elif [ -n "$group" ]; then
                     export PREF_GROUP="$group"
                 fi
                 continue
@@ -193,6 +197,26 @@ fi
 # Si pasaron un enlace magnet o archivo torrent directo
 if [[ "$1" == magnet:\?* || "$1" == *.torrent || "$1" == http://* || "$1" == https://* ]]; then
     play_stream "$@"
+    # Si Shift+N o fin de video activó Modo Maratón, continuar al siguiente capítulo
+    while [ -f /tmp/marathon_next.json ]; do
+        next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
+        next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
+        next_grp=$(jq -r '.group // empty' /tmp/marathon_next.json 2>/dev/null)
+        rm -f /tmp/marathon_next.json
+
+        if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
+            echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
+            echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep} de ${next_title}...   ║${NC}"
+            echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+            if [ -n "$next_grp" ]; then
+                export PREF_GROUP="$next_grp"
+            elif [ -n "$9" ]; then
+                export PREF_GROUP="$9"
+            fi
+            run_search_and_play "$next_title $next_ep"
+            break
+        fi
+    done
     exit 0
 fi
 

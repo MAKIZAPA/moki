@@ -187,6 +187,19 @@ fi
 # Si pasaron un enlace magnet directo
 if [[ "$1" == magnet:\?* ]]; then
     play_stream "$@"
+    while [ -f /tmp/marathon_next.json ]; do
+        next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
+        next_season=$(jq -r '.season' /tmp/marathon_next.json 2>/dev/null)
+        next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
+        rm -f /tmp/marathon_next.json
+        if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
+            echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
+            echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Temporada ${next_season} Episodio ${next_ep}...  ║${NC}"
+            echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+            run_search_and_play "$next_title" "$next_season" "$next_ep"
+            break
+        fi
+    done
     exit 0
 fi
 
