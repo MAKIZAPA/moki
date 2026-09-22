@@ -116,8 +116,19 @@ local function save_progress()
     local key = title:lower():gsub("%s+", "_"):gsub("[^%w_]", "")
     if key == "" then key = "video" end
 
+    local fn = mp.get_property("filename") or ""
+    local seed_title = ""
+    if fn ~= "" and (fn:find("%.") or fn:find("%-")) then
+        seed_title = fn
+    elseif media.release_title and media.release_title ~= "" then
+        seed_title = media.release_title
+    else
+        seed_title = title
+    end
+
     local entry = history[key] or {}
-    entry.title = title
+    entry.title = seed_title
+    entry.clean_title = title
     entry.type = media.type or "anime"
     entry.poster = media.poster or entry.poster or ""
     entry.updated_at = os.time()

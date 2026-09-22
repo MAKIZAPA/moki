@@ -129,7 +129,7 @@ def main():
                 ep_label = f"T{season:02d}E{ep:02d}" if m_type == "series" else f"Cap {ep}" if m_type == "anime" else "Peli"
                 status_info = f"\033[1;33m{ep_label} ({pos_str}/{dur_str} - {percent}%)\033[0m [{bar}]  Reanudar en {pos_str}"
 
-            fzf_lines.append(f"\033[1;36m[{i:2d}]\033[0m \033[1;37m{title:<24s}\033[0m \033[0;36m[{type_icon}]\033[0m  {status_info}")
+            fzf_lines.append(f"\033[1;36m[{i:2d}]\033[0m \033[1;37m{title}\033[0m \033[0;36m[{type_icon}]\033[0m  {status_info}")
 
         c_idx, used_fzf = select_with_fzf(
             fzf_lines,
@@ -202,6 +202,26 @@ def main():
         if selected:
             m_type = selected.get("type", "anime")
             title = selected.get("title", "")
+            # Nombre limpio para AniSkip, Mal y búsquedas
+            clean_title = selected.get("clean_title")
+            if not clean_title:
+                clean_title = title
+                clean_title = re.sub(r"^\[.*?\]\s*", "", clean_title)
+                clean_title = re.sub(r"\.\w+$", "", clean_title)
+                m_c = re.search(r"^(.*?)[.\s_-]+S\d+E\d+", clean_title, re.IGNORECASE)
+                if m_c and m_c.group(1).strip():
+                    clean_title = m_c.group(1).replace(".", " ").replace("_", " ").strip()
+                else:
+                    m_c2 = re.search(r"^(.*?)[.\s_-]+E\d+", clean_title, re.IGNORECASE)
+                    if m_c2 and m_c2.group(1).strip():
+                        clean_title = m_c2.group(1).replace(".", " ").replace("_", " ").strip()
+                    else:
+                        m_c3 = re.search(r"^(.*?)\s+-\s+\d+", clean_title)
+                        if m_c3 and m_c3.group(1).strip():
+                            clean_title = m_c3.group(1).replace(".", " ").replace("_", " ").strip()
+                        else:
+                            clean_title = clean_title.replace(".", " ").replace("_", " ").strip()
+
             ep = selected.get("episode", 1)
             season = selected.get("season", 1)
             time_pos = selected.get("time_pos", 0)
@@ -227,14 +247,14 @@ def main():
                         "anime",
                         magnet,
                         str(size_gb),
-                        title,
+                        clean_title,
                         f"Capítulo {ep}",
                         poster,
                         str(ep),
                         str(int(time_pos)),
                         str(mal_id),
                         selected.get("group", ""),
-                        selected.get("release_title", "")
+                        selected.get("release_title", "") or title
                     ]
                 elif m_type == "series":
                     cmd = [
@@ -242,7 +262,7 @@ def main():
                         magnet,
                         str(file_idx),
                         str(size_gb),
-                        title,
+                        clean_title,
                         f"Episodio {ep}",
                         poster,
                         "series",
@@ -256,7 +276,7 @@ def main():
                         magnet,
                         str(file_idx),
                         str(size_gb),
-                        title,
+                        clean_title,
                         "Película",
                         poster,
                         "movie",
@@ -278,16 +298,16 @@ def main():
 
                 if pref_grp:
                     env["PREF_GROUP"] = pref_grp
-                    print(f"\n{GREEN}🚀 Buscando automáticamente Capítulo {ep} de '{title}' (Release: {pref_grp})...{NC}\n")
+                    print(f"\n{GREEN}🚀 Buscando automáticamente Capítulo {ep} de '{clean_title}' (Release: {pref_grp})...{NC}\n")
                 else:
-                    print(f"\n{GREEN}🚀 Buscando semillas para '{title}' Capítulo {ep}...{NC}\n")
+                    print(f"\n{GREEN}🚀 Buscando semillas para '{clean_title}' Capítulo {ep}...{NC}\n")
 
                 if m_type == "anime":
-                    cmd = ["anime", title, str(ep)]
+                    cmd = ["anime", clean_title, str(ep)]
                 elif m_type == "series":
-                    cmd = ["serie", title, str(season), str(ep)]
+                    cmd = ["serie", clean_title, str(season), str(ep)]
                 else:
-                    cmd = ["serie", title]
+                    cmd = ["serie", clean_title]
 
             subprocess.run(cmd, env=env)
             break
