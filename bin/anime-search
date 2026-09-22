@@ -163,13 +163,42 @@ def classify_audio(title):
     
     return "GLOBAL"
 
+def parse_ep_from_title(title):
+    # Eliminar tags iniciales entre corchetes para no confundir números de fansubs
+    cleaned = re.sub(r"^\[.*?\]\s*", "", title)
+    # 1. Patrones estándares: S01E10, S1E10
+    m = re.search(r"\bS\d+E(\d{1,4})\b", cleaned, re.IGNORECASE)
+    if m: return int(m.group(1))
+    # 2. E10
+    m = re.search(r"\bE(\d{1,4})\b", cleaned, re.IGNORECASE)
+    if m: return int(m.group(1))
+    # 3. Formato ' - 10 ' o ' - 10[' o ' - 10('
+    m = re.search(r"\s+-\s+(\d{1,4})(?:\s+|$|\[|\()", cleaned)
+    if m: return int(m.group(1))
+    # 4. Formato 'Capítulo 10', 'Cap 10', 'Ep 10'
+    m = re.search(r"\b(?:cap[íi]tulo|cap|episodio|ep)\.?\s*(\d{1,4})\b", cleaned, re.IGNORECASE)
+    if m: return int(m.group(1))
+    # 5. Número aislado entre espacios que no sea resolución (1080p, 720p, etc.) o bitrate
+    m = re.search(r"\s+(\d{1,3})\s+(?!(?:p|k|bit|mb|gb|fps|hz)\b)", cleaned, re.IGNORECASE)
+    if m: return int(m.group(1))
+    return None
+
 def extract_episode(query):
     query = query.strip()
+    # 1. Detectar patrón S01E09 o S1E09 en el nombre (ej. archivos de release crudos)
+    m = re.search(r"^(.*?)[.\s_-]+S\d+E(\d{1,4})", query, re.IGNORECASE)
+    if m and m.group(1).strip():
+        name = m.group(1).replace(".", " ").replace("_", " ").strip()
+        return name, int(m.group(2))
+    # 2. Detectar patrón E09
+    m = re.search(r"^(.*?)[.\s_-]+E(\d{1,4})\b", query, re.IGNORECASE)
+    if m and m.group(1).strip():
+        name = m.group(1).replace(".", " ").replace("_", " ").strip()
+        return name, int(m.group(2))
+    # 3. Número de capítulo al final: 'Black Torch 10' o 'Dandadan cap 1'
     m = re.search(r"^(.*?)(?:\s+(?:cap[íi]tulo|cap|ep|episodio|e)?\s*(\d{1,4}))\s*$", query, re.IGNORECASE)
     if m and m.group(1).strip():
-        name = m.group(1).strip()
-        ep = int(m.group(2))
-        return name, ep
+        return m.group(1).strip(), int(m.group(2))
     return query, None
 
 def main():
@@ -180,7 +209,7 @@ def main():
             log("\033[0;31mNo se ingresó ningún término de búsqueda.\033[0m")
             sys.exit(1)
         
-        # Comprobar si ya puso el capítulo en el nombre (ej. Dandadan 1)
+        # Comprobar si ya puso el capítulo en el nombre (ej. Dandadan 1 o release)
         name, ep = extract_episode(raw_name)
         if ep is None:
             log("\033[1;33m🔢 Capítulo (opcional, ej. 1, 05 o Enter para todos): \033[0m", end="")
@@ -234,6 +263,11 @@ def main():
                 # Filtrar releases francesas que producen audios mudos o solo francés
                 if is_french(item["title"]):
                     continue
+                # Si estamos buscando un episodio concreto, asegurar que coincida y no sea otro episodio
+                if ep is not None:
+                    parsed_ep = parse_ep_from_title(item["title"])
+                    if parsed_ep is not None and parsed_ep != ep:
+                        continue
                 cls = classify_audio(item["title"])
                 item["cls"] = cls
                 if cls in ("LATINO", "ESP_ESP"):
@@ -269,10 +303,14 @@ def main():
     pref_group = os.environ.get("PREF_GROUP", "").strip().lower()
     selected = None
 
-    # Si hay un grupo de fansub recordado del capítulo anterior, intentar coincidencia automática sin pedir input
+    # Si hay un grupo de fansub recordado del capítulo anterior, intentar coincidencia automática del mismo capítulo
     if pref_group:
         for item in final_list:
             if pref_group in item["title"].lower() and item["seeders"] > 0:
+                if ep is not None:
+                    p_ep = parse_ep_from_title(item["title"])
+                    if p_ep is not None and p_ep != ep:
+                        continue
                 log(f"\n\033[1;32m🎯 ¡Coincidencia automática encontrada del grupo '{pref_group.upper()}'!\033[0m")
                 log(f"\033[0;36m   ➔ {item['title']} (🌱 {item['seeders']} seeds)\033[0m\n")
                 selected = item

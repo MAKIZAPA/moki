@@ -68,8 +68,35 @@ end)
 local function save_progress()
     local media = read_json(MEDIA_FILE) or {}
     local title = media.title
+    local inferred_ep = nil
+    local inferred_season = nil
+
     if not title or title == "" then
-        title = mp.get_property("media-title") or mp.get_property("filename")
+        local raw = mp.get_property("media-title") or mp.get_property("filename") or ""
+        -- Eliminar extensión .mkv, .mp4, etc.
+        raw = raw:gsub("%.%w+$", "")
+        local clean_raw = raw:gsub("^%b[]%s*", ""):gsub("^%(.-%)%s*", "")
+        -- Buscar patrón S01E09 o E09 en el nombre de archivo crudo
+        local n_s, s_num, e_num = clean_raw:match("^(.-)[%s%.%-_]+[Ss](%d+)[Ee](%d+)")
+        if n_s then
+            title = n_s:gsub("[%._]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+            inferred_season = tonumber(s_num)
+            inferred_ep = tonumber(e_num)
+        else
+            local n_e, ep_only = clean_raw:match("^(.-)[%s%.%-_]+[Ee](%d+)")
+            if n_e then
+                title = n_e:gsub("[%._]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                inferred_ep = tonumber(ep_only)
+            else
+                local n_dash, d_ep = clean_raw:match("^(.-)%s+-%s+(%d+)")
+                if n_dash then
+                    title = n_dash:gsub("[%._]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                    inferred_ep = tonumber(d_ep)
+                else
+                    title = raw
+                end
+            end
+        end
     end
     if not title or title == "" then return end
 
@@ -130,8 +157,8 @@ local function save_progress()
     entry.release_title = valid_rel_title
 
     local is_series_or_anime = (entry.type == "anime" or entry.type == "series")
-    local cur_ep = tonumber(media.episode_num) or tonumber(media.episode) or entry.episode or 1
-    local cur_season = tonumber(media.season) or entry.season or 1
+    local cur_ep = tonumber(media.episode_num) or tonumber(media.episode) or inferred_ep or entry.episode or 1
+    local cur_season = tonumber(media.season) or inferred_season or entry.season or 1
 
     entry.season = cur_season
 
