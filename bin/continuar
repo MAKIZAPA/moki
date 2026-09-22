@@ -117,7 +117,7 @@ def main():
         fzf_lines = []
         for i, (key, it) in enumerate(items, 1):
             m_type = it.get("type", "anime")
-            type_icon = "Anime" if m_type == "anime" else "Serie" if m_type == "series" else "Película"
+            type_icon = "Anime" if m_type == "anime" else "Serie" if m_type in ("series", "latino_series") else "Película"
             title = it.get("title", "Contenido")
             ep = it.get("episode", 1)
             season = it.get("season", 1)
@@ -136,7 +136,7 @@ def main():
                 bar = progress_bar(percent, 8)
                 pos_str = format_seconds(time_pos)
                 dur_str = format_seconds(duration)
-                ep_label = f"T{season:02d}E{ep:02d}" if m_type == "series" else f"Cap {ep}" if m_type == "anime" else "Peli"
+                ep_label = f"T{season:02d}E{ep:02d}" if m_type in ("series", "latino_series") else f"Cap {ep}" if m_type == "anime" else "Peli"
                 status_info = f"\033[1;33m{ep_label} ({pos_str}/{dur_str} - {percent}%)\033[0m [{bar}]  Reanudar en {pos_str}"
 
             fzf_lines.append(f"\033[1;36m[{i:2d}]\033[0m \033[1;37m{title}\033[0m \033[0;36m[{type_icon}]\033[0m  {status_info}")
@@ -164,7 +164,7 @@ def main():
             # Mostrar lista clásica si no se usa fzf
             for i, (key, it) in enumerate(items, 1):
                 m_type = it.get("type", "anime")
-                type_icon = "Anime" if m_type == "anime" else "Serie" if m_type == "series" else "Película"
+                type_icon = "Anime" if m_type == "anime" else "Serie" if m_type in ("series", "latino_series") else "Película"
                 title = it.get("title", "Contenido")
                 ep = it.get("episode", 1)
                 season = it.get("season", 1)
@@ -184,7 +184,7 @@ def main():
                     bar = progress_bar(percent)
                     pos_str = format_seconds(time_pos)
                     dur_str = format_seconds(duration)
-                    ep_label = f"T{season:02d}E{ep:02d}" if m_type == "series" else f"Capítulo {ep}" if m_type == "anime" else "Película"
+                    ep_label = f"T{season:02d}E{ep:02d}" if m_type in ("series", "latino_series") else f"Capítulo {ep}" if m_type == "anime" else "Película"
                     print(f"       {ep_label}  |  {pos_str} / {dur_str} ({percent}%)  [{bar}]")
                     print(f"       {YELLOW}Reanudar en {pos_str}{NC}\n")
 
@@ -322,7 +322,11 @@ def main():
                 else:
                     print(f"\n{GREEN}🚀 Buscando semillas para '{clean_title}' Capítulo {ep}...{NC}\n")
 
-                if m_type == "anime":
+                if m_type == "latino_series":
+                    cmd = ["latino", clean_title, str(season), str(ep)]
+                elif m_type == "latino":
+                    cmd = ["latino", clean_title]
+                elif m_type == "anime":
                     cmd = ["anime", clean_title, str(ep)]
                 elif m_type == "series":
                     cmd = ["serie", clean_title, str(season), str(ep)]

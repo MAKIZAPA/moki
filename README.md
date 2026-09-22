@@ -73,6 +73,18 @@
       Aceleración por hardware en <b>NVIDIA</b> (NVDEC), <b>AMD Radeon</b> (RADV/VA-API) e <b>Intel</b> (ANV/VA-API) con shaders <b>Anime4K</b> por IA.
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <img src="https://img.shields.io/badge/WEB_STREAM-AUDIO_LATINO-10b981?style=flat-square" alt="Latino Web" /><br/>
+      <b>Audio Latino (Web Scraping)</b><br/>
+      Acceso directo a películas y series completas con doblaje en Español Latino sin depender de semillas P2P ni enjambres torrent. Resolución 1080p directa mediante HLS/m3u8 en MPV.
+    </td>
+    <td width="50%">
+      <img src="https://img.shields.io/badge/RESUME-SMART_HISTORY-blue?style=flat-square" alt="Continuar" /><br/>
+      <b>Historial Unificado</b><br/>
+      Reanudación precisa en el minuto exacto para Anime, Series P2P y contenido Web Latino mediante <code>moki continuar</code>, con eliminación ágil de elementos y Discord RPC.
+    </td>
+  </tr>
 </table>
 
 ---
@@ -133,11 +145,12 @@ Gestión ágil para descartar semillas no deseadas o pruebas de archivos:
 | `moki anime <nombre> [cap]` | Búsqueda y streaming directo de anime en Nyaa |
 | `moki serie <nombre> [temp] [cap]` | Búsqueda de series en Cinemeta y Torrentio |
 | `moki pelis <nombre>` | Búsqueda de películas con prioridad de cine |
+| `moki latino <nombre> [temp] [cap]` | Búsqueda y streaming web en Audio Latino sin torrents |
 | `moki continuar` | Historial inteligente (reanuda segundo exacto o salta de episodio) |
 | `moki voz` | Búsqueda por reconocimiento de voz mediante micrófono |
 | `moki limpiar` | Limpieza de búferes temporales y liberación de memoria RAM |
 
-*Nota: También puedes invocar cada utilidad directamente en tu terminal: `anime`, `serie`, `pelis`, `continuar` y `limpiar`.*
+*Nota: También puedes invocar cada utilidad directamente en tu terminal: `anime`, `serie`, `pelis`, `latino`, `continuar` y `limpiar`.*
 
 </details>
 

@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+# ==========================================================
+# CLI Latino Search & Stream Extractor (Flixlatam + MPV)
+# Autor: @makizapa
+# ==========================================================
+
+import os
+import sys
+import re
+import json
+import hashlib
+import shutil
+import subprocess
+from curl_cffi import requests
+from bs4 import BeautifulSoup
+
+CYAN = "\033[0;36m"
+GREEN = "\033[0;32m"
+YELLOW = "\033[1;33m"
+PURPLE = "\033[0;35m"
+BLUE = "\033[0;34m"
+RED = "\033[0;31m"
+BOLD = "\033[1m"
+NC = "\033[0m"
+
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+
+def log(msg="", end="\n"):
+    sys.stderr.write(f"{msg}{end}")
+    sys.stderr.flush()
+
+def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
+    if not shutil.which("fzf") or not sys.stdin.isatty():
+        return None, False
+    try:
+        cmd = [
+            "fzf",
+            "--ansi",
+            "--height=45%",
+            "--layout=reverse",
+            "--border",
+            f"--prompt={prompt}",
+            "--cycle"
+        ]
+        if header:
+            cmd.append(f"--header={header}")
+        p = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True
+        )
+        out, _ = p.communicate(input="\n".join(items_text))
+        if p.returncode == 0 and out.strip():
+            m = re.search(r"\[\s*(\d+)\s*\]", out)
+            if m:
+                return int(m.group(1)) - 1, True
+        elif p.returncode in (1, 130):
+            return None, True
+    except Exception:
+        pass
+    return None, False
+
+def solve_pow(challenge: str, difficulty: int, salt: str) -> str:
+    prefix = "0" * difficulty
+    nonce = 0
+    while True:
+        d = f"{challenge}{nonce}".encode("utf-8")
+        h = hashlib.sha256(d).hexdigest()
+        if h.startswith(prefix):
+            return hashlib.sha256(f"{challenge}{nonce}{salt}".encode("utf-8")).hexdigest()
+        nonce += 1
+
+def decrypt_links_node(key_hex: str, enc_links: list) -> list:
+    input_json = json.dumps({"key": key_hex, "links": enc_links})
+    js_code = '''
+    const crypto = require("crypto");
+    const data = JSON.parse(process.argv[1]);
+    const key = Buffer.from(data.key, "hex").subarray(0, 32);
+    const results = [];
+    for (const link of data.links) {
+        try {
+            const buf = Buffer.from(link, "base64");
+            const iv = buf.subarray(0, 16);
+            const ciphertext = buf.subarray(16);
+            const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+            let dec = decipher.update(ciphertext, undefined, "utf8");
+            dec += decipher.final("utf8");
+            results.push(dec);
+        } catch(e) {
+            results.push(null);
+        }
+    }
+    console.log(JSON.stringify(results));
+    '''
+    p = subprocess.run(["node", "-e", js_code, input_json], capture_output=True, text=True)
+    if p.returncode == 0 and p.stdout.strip():
+        try:
+            return json.loads(p.stdout)
+        except Exception:
+            return []
+    return []
+
+def unpack_js_node(packed_str: str) -> str:
+    m = re.search(r"eval\((function\(p,a,c,k,e,d\)[\s\S]*?\.split\('\|'\)\))\)", packed_str)
+    if not m:
+        return ""
+    js_func = m.group(1)
+    js_code = f"console.log(({js_func}));"
+    p = subprocess.run(["node", "-e", js_code], capture_output=True, text=True)
+    return p.stdout if p.returncode == 0 else ""
+
+def resolve_stream(session, embed_url: str):
+    if not embed_url:
+        return None, None
+    code = embed_url.rstrip("/").split("/")[-1]
+    candidates = [
+        f"https://flaswish.com/e/{code}",
+        f"https://streamwish.to/e/{code}",
+        f"https://vidhidepro.com/v/{code}",
+        f"https://filelions.to/v/{code}",
+        f"https://smoothpre.com/v/{code}"
+    ]
+
+    headers = {
+        "Referer": "https://flixlatam.com/",
+        "User-Agent": USER_AGENT
+    }
+
+    for cand in candidates:
+        try:
+            r = session.get(cand, headers=headers, timeout=7)
+            if r.status_code == 200:
+                # Check for packed JS
+                if "eval(function(p,a,c,k,e,d)" in r.text:
+                    unpacked = unpack_js_node(r.text)
+                    m3u8s = re.findall(r"https?://[^\s\"\'<>]+\.m3u8[^\s\"\'<>]*", unpacked)
+                    if m3u8s:
+                        master_url = m3u8s[0]
+                        # Tentar obtener la sub-playlist de mayor resolución
+                        try:
+                            r_m = session.get(
+                                master_url,
+                                headers={"Referer": "https://flaswish.com/", "Origin": "https://flaswish.com", "User-Agent": USER_AGENT},
+                                timeout=5
+                            )
+                            if r_m.status_code == 200 and "#EXT-X-STREAM-INF" in r_m.text:
+                                base_m = master_url[:master_url.rfind("/") + 1]
+                                sub_lines = [l.strip() for l in r_m.text.splitlines() if l.strip() and not l.startswith("#")]
+                                if sub_lines:
+                                    best_sub = sub_lines[-1]
+                                    sub_url = best_sub if best_sub.startswith("http") else base_m + best_sub
+                                    return sub_url, "https://flaswish.com/"
+                        except Exception:
+                            pass
+                        return master_url, "https://flaswish.com/"
+
+                # Direct m3u8
+                direct_m3u8 = re.findall(r"https?://[^\s\"\'<>]+\.m3u8[^\s\"\'<>]*", r.text)
+                if direct_m3u8:
+                    return direct_m3u8[0], cand
+        except Exception:
+            continue
+
+    return None, None
+
+def search_flixlatam(session, query: str):
+    url = f"https://flixlatam.com/search?s={query}"
+    r = session.get(url, timeout=10)
+    if r.status_code != 200:
+        return []
+    soup = BeautifulSoup(r.text, "html.parser")
+    items = soup.select("article.item")
+    results = []
+    for it in items:
+        a = it.select_one(".data h3 a") or it.select_one(".poster a")
+        if not a:
+            continue
+        title = a.text.strip()
+        title = re.sub(r"^Ver\s+", "", title, flags=re.I)
+        title = re.sub(r"\s+online$", "", title, flags=re.I).strip()
+        href = a.get("href") or ""
+        poster_img = it.select_one(".poster img")
+        poster = poster_img.get("src") if poster_img else ""
+        year_el = it.select_one(".data span")
+        year = year_el.text.strip() if year_el else ""
+        rating_el = it.select_one(".rating")
+        rating = rating_el.text.strip() if rating_el else ""
+        is_tv = "/serie/" in href or "/anime/" in href
+
+        results.append({
+            "title": title,
+            "url": href,
+            "poster": poster,
+            "year": year,
+            "rating": rating,
+            "is_series": is_tv
+        })
+
+    # Priorizar coincidencias exactas con el término buscado
+    q_norm = query.strip().lower()
+    def rank_score(item):
+        t = item["title"].lower()
+        if t == q_norm:
+            return 0
+        if t.startswith(q_norm):
+            return 1
+        if q_norm in t:
+            return 2
+        return 3
+
+    results.sort(key=rank_score)
+    return results
+
+def get_series_episodes(session, series_url: str):
+    r = session.get(series_url, timeout=10)
+    if r.status_code != 200:
+        return []
+    soup = BeautifulSoup(r.text, "html.parser")
+    ep_elements = soup.select("ul.episodios li")
+    episodes = []
+    for el in ep_elements:
+        a = el.select_one(".episodiotitle a")
+        if not a:
+            continue
+        ep_href = a.get("href") or ""
+        ep_name = a.text.strip()
+        num_el = el.select_one(".numerando")
+        num_str = num_el.text.strip() if num_el else "1 - 1"
+        s_num = 1
+        e_num = 1
+        m = re.search(r"(\d+)\s*-\s*(\d+)", num_str)
+        if m:
+            s_num = int(m.group(1))
+            e_num = int(m.group(2))
+        episodes.append({
+            "name": ep_name,
+            "url": ep_href,
+            "season": s_num,
+            "episode": e_num
+        })
+    return episodes
+
+def extract_stream_from_page(session, page_url: str):
+    r = session.get(page_url, timeout=10)
+    if r.status_code != 200:
+        return None, None
+    soup = BeautifulSoup(r.text, "html.parser")
+    iframe = soup.select_one("div.play iframe") or soup.select_one("iframe")
+    if not iframe:
+        return None, None
+    vid_src = iframe.get("src") or ""
+    if vid_src.startswith("/"):
+        vid_src = "https://flixlatam.com" + vid_src
+
+    headers = {
+        "Referer": page_url,
+        "User-Agent": USER_AGENT,
+        "Sec-Fetch-Dest": "iframe",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin"
+    }
+    r2 = session.get(vid_src, headers=headers, timeout=10)
+    if r2.status_code != 200:
+        return None, None
+
+    m_chal = re.search(r"const POW_CHALLENGE\s*=\s*'([^']+)'", r2.text)
+    m_diff = re.search(r"const POW_DIFFICULTY\s*=\s*(\d+)", r2.text)
+    m_salt = re.search(r"const POW_SALT\s*=\s*'([^']+)'", r2.text)
+    m_data = re.search(r"let\s+dataLink\s*=\s*(\[[\s\S]*?\]);", r2.text)
+
+    if not (m_chal and m_diff and m_salt and m_data):
+        return None, None
+
+    chal = m_chal.group(1)
+    diff = int(m_diff.group(1))
+    salt = m_salt.group(1)
+    data_list = json.loads(m_data.group(1))
+
+    # PoW
+    key_hex = solve_pow(chal, diff, salt)
+
+    # Ordenar por prioridad de idioma: LAT (Latino) -> ESP (Castellano) -> SUB (Subtitulado)
+    def lang_priority(entry):
+        lang = entry.get("video_language", "").upper()
+        if "LAT" in lang:
+            return 0
+        if "ESP" in lang:
+            return 1
+        return 2
+
+    data_list.sort(key=lang_priority)
+
+    # Recorrer opciones de idioma y servidores
+    for entry in data_list:
+        lang = entry.get("video_language", "LAT")
+        all_embeds = entry.get("sortedEmbeds", []) + entry.get("downloadEmbeds", [])
+        enc_links = [item["link"] for item in all_embeds if isinstance(item, dict) and "link" in item]
+        if not enc_links:
+            continue
+
+        decrypted_urls = decrypt_links_node(key_hex, enc_links)
+        for dec_url in decrypted_urls:
+            if not dec_url:
+                continue
+            stream_url, ref = resolve_stream(session, dec_url)
+            if stream_url:
+                return stream_url, ref, lang
+
+    return None, None, None
+
+def main():
+    query = ""
+    target_season = None
+    target_episode = None
+
+    args = sys.argv[1:]
+    if args:
+        # Detectar si pasaron query y temporada/capitulo: "The Boys" 2 4
+        if len(args) >= 3 and args[-2].isdigit() and args[-1].isdigit():
+            target_season = int(args[-2])
+            target_episode = int(args[-1])
+            query = " ".join(args[:-2])
+        elif len(args) >= 2 and args[-1].isdigit():
+            target_episode = int(args[-1])
+            query = " ".join(args[:-1])
+        else:
+            query = " ".join(args)
+
+    if not query.strip():
+        log(f"{CYAN}{BOLD}╔══════════════════════════════════════════════════════════════╗{NC}")
+        log(f"{CYAN}{BOLD}║   :: MOKI - BÚSQUEDA WEB AUDIO LATINO (Sin Torrents)         ║{NC}")
+        log(f"{CYAN}{BOLD}╚══════════════════════════════════════════════════════════════╝{NC}")
+        log(f"{YELLOW}Ingresa el nombre de la película o serie a buscar: {NC}", end="")
+        try:
+            query = sys.stdin.readline().strip()
+        except KeyboardInterrupt:
+            sys.exit(0)
+
+    if not query.strip():
+        sys.exit(0)
+
+    log(f"\n{GREEN}:: Buscando en catálogo latino '{query}'...{NC}")
+    session = requests.Session(impersonate="chrome120")
+    results = search_flixlatam(session, query)
+
+    if not results:
+        log(f"{RED}:: No se encontraron resultados en audio latino para '{query}'.{NC}")
+        sys.exit(1)
+
+    # Menú de selección interactivo
+    fzf_lines = []
+    for i, r in enumerate(results, 1):
+        type_tag = f"{PURPLE}[SERIE]{NC}" if r["is_series"] else f"{CYAN}[PELI] {NC}"
+        year_str = f"({r['year']})" if r['year'] else ""
+        rating_str = f"★ {r['rating']}" if r['rating'] else ""
+        line = f"{CYAN}[{i:2d}]{NC} {type_tag} {BOLD}{r['title']}{NC}  {YELLOW}{year_str}{NC} {GREEN}{rating_str}{NC}"
+        fzf_lines.append(line)
+
+    c_idx, used_fzf = select_with_fzf(
+        fzf_lines,
+        prompt="🔎 Seleccionar: ",
+        header=f"Resultados para '{query}' | ↑↓ Moverse | Enter = Seleccionar | Esc = Salir"
+    )
+
+    chosen = None
+    if used_fzf:
+        if c_idx is None:
+            sys.exit(0)
+        chosen = results[c_idx]
+    else:
+        log(f"\n{GREEN}Resultados encontrados:{NC}")
+        for l in fzf_lines:
+            log(f"  {l}")
+        while True:
+            log(f"\n{YELLOW}Elige una opción (1-{len(results)}) o 'q' para salir: {NC}", end="")
+            ans = sys.stdin.readline().strip()
+            if ans.lower() in ("q", "quit", "exit", ""):
+                sys.exit(0)
+            if ans.isdigit() and 1 <= int(ans) <= len(results):
+                chosen = results[int(ans) - 1]
+                break
+            log(f"{RED}Opción inválida.{NC}")
+
+    if not chosen:
+        sys.exit(0)
+
+    media_title = chosen["title"]
+    media_poster = chosen["poster"]
+    is_series = chosen["is_series"]
+    selected_page_url = chosen["url"]
+    selected_season = 1
+    selected_ep_num = 1
+    ep_name = "Película"
+
+    if is_series:
+        log(f"\n{GREEN}:: Cargando lista de episodios para '{media_title}'...{NC}")
+        episodes = get_series_episodes(session, chosen["url"])
+        if not episodes:
+            log(f"{RED}:: No se pudieron obtener los episodios de la serie.{NC}")
+            sys.exit(1)
+
+        chosen_ep = None
+        if target_season is not None and target_episode is not None:
+            for ep in episodes:
+                if ep["season"] == target_season and ep["episode"] == target_episode:
+                    chosen_ep = ep
+                    break
+        elif target_episode is not None:
+            for ep in episodes:
+                if ep["episode"] == target_episode:
+                    chosen_ep = ep
+                    break
+
+        if not chosen_ep:
+            ep_lines = []
+            for i, ep in enumerate(episodes, 1):
+                ep_tag = f"T{ep['season']:02d}E{ep['episode']:02d}"
+                ep_lines.append(f"{CYAN}[{i:3d}]{NC} {YELLOW}{ep_tag}{NC} • {BOLD}{ep['name']}{NC}")
+
+            c_ep_idx, used_fzf_ep = select_with_fzf(
+                ep_lines,
+                prompt="🔎 Seleccionar capítulo: ",
+                header=f"{media_title} • Total episodios: {len(episodes)} | ↑↓ Moverse | Enter = Ver"
+            )
+
+            if used_fzf_ep:
+                if c_ep_idx is None:
+                    sys.exit(0)
+                chosen_ep = episodes[c_ep_idx]
+            else:
+                for l in ep_lines:
+                    log(f"  {l}")
+                while True:
+                    log(f"\n{YELLOW}Elige un capítulo (1-{len(episodes)}) o 'q' para salir: {NC}", end="")
+                    ans = sys.stdin.readline().strip()
+                    if ans.lower() in ("q", "quit", "exit", ""):
+                        sys.exit(0)
+                    if ans.isdigit() and 1 <= int(ans) <= len(episodes):
+                        chosen_ep = episodes[int(ans) - 1]
+                        break
+                    log(f"{RED}Opción inválida.{NC}")
+
+        selected_page_url = chosen_ep["url"]
+        if selected_page_url.startswith("/"):
+            selected_page_url = "https://flixlatam.com" + selected_page_url
+        selected_season = chosen_ep["season"]
+        selected_ep_num = chosen_ep["episode"]
+        ep_name = f"Temporada {selected_season} • Episodio {selected_ep_num} ({chosen_ep['name']})"
+
+    log(f"\n{CYAN}:: Extrayendo stream en audio latino para {BOLD}{media_title}{NC}...")
+    stream_url, referer, lang = extract_stream_from_page(session, selected_page_url)
+
+    if not stream_url:
+        log(f"{RED}:: No se pudo resolver un stream activo en este momento.{NC}")
+        sys.exit(1)
+
+    log(f"{GREEN}:: Stream verificado con éxito [{lang}]. Iniciando reproductor mpv...{NC}\n")
+
+    # Imprimir variables en stdout para que el launcher bash las capture limpiamente
+    print(f"STREAM_URL:{stream_url}")
+    print(f"REFERER:{referer}")
+    print(f"TITLE:{media_title}")
+    print(f"TYPE:{'series' if is_series else 'movie'}")
+    print(f"SEASON:{selected_season}")
+    print(f"EPISODE_NUM:{selected_ep_num}")
+    print(f"EPISODE:{ep_name}")
+    if media_poster:
+        print(f"POSTER:{media_poster}")
+    sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()

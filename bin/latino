@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# ==========================================================
+# ✨ MOKI - Latino Streamer (Web Scraping + mpv)
+# Cero Torrents • Audio Latino • Cero Desgaste SSD (100% RAM)
+# Autor: @makizapa
+# ==========================================================
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+PURPLE='\033[0;35m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+SEARCH_SCRIPT="$HOME/.local/bin/latino-search"
+if [ ! -f "$SEARCH_SCRIPT" ]; then
+    SEARCH_SCRIPT="$(dirname "$0")/latino-search"
+fi
+
+VOICE_SCRIPT="$HOME/.local/bin/anime-voice"
+
+cleanup() {
+    rm -f /tmp/marathon_next.json /tmp/current_media.json 2>/dev/null
+}
+trap cleanup EXIT INT TERM
+
+play_web_stream() {
+    local stream_url="$1"
+    local referer="${2:-https://flaswish.com/}"
+    local title="$3"
+    local episode="$4"
+    local poster="$5"
+    local media_type="${6:-movie}"
+    local season="${7:-1}"
+    local ep_num="${8:-1}"
+    local start_time="${9:-${RESUME_START_TIME:-0}}"
+    export RESUME_START_TIME=0
+
+    # Guardar metadatos para Discord RPC y script history.lua
+    cat <<EOF > /tmp/current_media.json
+{
+  "title": "$title",
+  "type": "$media_type",
+  "season": $season,
+  "episode": "$episode",
+  "episode_num": $ep_num,
+  "start_time": $start_time,
+  "poster": "$poster",
+  "magnet": ""
+}
+EOF
+
+    echo -e "\n${GREEN}:: Conexión establecida. Transmitiendo stream en mpv...${NC}"
+    echo -e "${CYAN}:: Audio: Español Latino • Aceleración por hardware activa${NC}"
+    echo -e "${YELLOW}Atajos: [f] pantalla completa | [a] audio | [j] subtítulos | [Shift+N] siguiente capítulo | [q] salir${NC}\n"
+
+    local display_title="MOKI • $title"
+    if [ "$media_type" = "series" ]; then
+        display_title="MOKI • $title • T${season}E${ep_num}"
+    fi
+
+    mpv --hwdec=auto \
+        --http-header-fields="Referer: $referer","User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0","Origin: $referer" \
+        --force-media-title="$display_title" \
+        "$stream_url"
+}
+
+run_search_and_play() {
+    local query="$@"
+
+    while true; do
+        rm -f /tmp/marathon_next.json
+        local output
+        output=$("$SEARCH_SCRIPT" $query)
+
+        local stream_url
+        local referer
+        local title
+        local episode
+        local poster
+        local media_type
+        local season
+        local ep_num
+
+        stream_url=$(echo "$output" | grep "^STREAM_URL:" | head -n1 | cut -d':' -f2-)
+        referer=$(echo "$output" | grep "^REFERER:" | head -n1 | cut -d':' -f2-)
+        title=$(echo "$output" | grep "^TITLE:" | head -n1 | cut -d':' -f2-)
+        episode=$(echo "$output" | grep "^EPISODE:" | head -n1 | cut -d':' -f2-)
+        poster=$(echo "$output" | grep "^POSTER:" | head -n1 | cut -d':' -f2-)
+        media_type=$(echo "$output" | grep "^TYPE:" | head -n1 | cut -d':' -f2-)
+        season=$(echo "$output" | grep "^SEASON:" | head -n1 | cut -d':' -f2-)
+        ep_num=$(echo "$output" | grep "^EPISODE_NUM:" | head -n1 | cut -d':' -f2-)
+
+        [ -z "$media_type" ] && media_type="movie"
+        [ -z "$season" ] && season=1
+        [ -z "$ep_num" ] && ep_num=1
+
+        local start_time="${RESUME_START_TIME:-0}"
+        export RESUME_START_TIME=0
+
+        if [ -n "$stream_url" ]; then
+            play_web_stream "$stream_url" "$referer" "$title" "$episode" "$poster" "$media_type" "$season" "$ep_num" "$start_time"
+        else
+            break
+        fi
+
+        # Comprobar si Modo Maratón solicitó el siguiente capítulo
+        if [ -f /tmp/marathon_next.json ]; then
+            local next_ep
+            local next_season
+            local next_title
+            next_ep=$(jq -r '.next_ep' /tmp/marathon_next.json 2>/dev/null)
+            next_season=$(jq -r '.season' /tmp/marathon_next.json 2>/dev/null)
+            next_title=$(jq -r '.title' /tmp/marathon_next.json 2>/dev/null)
+            rm -f /tmp/marathon_next.json
+
+            if [ -n "$next_ep" ] && [ "$next_ep" != "null" ]; then
+                echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Temporada ${next_season} Episodio ${next_ep}...  ║${NC}"
+                echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+                export RESUME_START_TIME=0
+                query="\"$next_title\" $next_season $next_ep"
+                continue
+            fi
+        fi
+        break
+    done
+
+    cleanup
+}
+
+show_help() {
+    echo -e "${CYAN}${BOLD}Uso de 'latino':${NC}"
+    echo -e "  ${GREEN}latino${NC}                                 Menú interactivo de películas y series en audio latino"
+    echo -e "  ${GREEN}latino \"<nombre>\"${NC}                     Busca una película o serie directamente"
+    echo -e "  ${GREEN}latino \"<nombre>\" <temp> <cap>${NC}        Busca directo temporada y capítulo (ej. latino \"The Boys\" 1 1)"
+    echo -e "  ${GREEN}latino voz${NC}                             Búsqueda por micrófono (voz)"
+    echo -e "  ${GREEN}latino -h, --help${NC}                      Muestra esta ayuda"
+}
+
+# Subcomandos y flags
+case "$1" in
+    -h|--help|help)
+        show_help
+        exit 0
+        ;;
+    voz|voice|-v)
+        if [ -f "$VOICE_SCRIPT" ]; then
+            VOICE_QUERY=$("$VOICE_SCRIPT")
+            if [ -n "$VOICE_QUERY" ]; then
+                run_search_and_play "$VOICE_QUERY"
+            fi
+        else
+            echo -e "${RED}Script de voz no encontrado.${NC}"
+        fi
+        exit 0
+        ;;
+    "")
+        run_search_and_play
+        ;;
+    *)
+        run_search_and_play "$@"
+        ;;
+esac

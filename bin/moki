@@ -4,7 +4,7 @@
 # Autor: makizapa
 # ==========================================================
 
-VERSION="1.3.0"
+VERSION="1.4.0"
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -37,6 +37,7 @@ show_menu() {
     echo -e "  ${PURPLE}[4]${NC} ${BOLD}Continuar viendo${NC}  ${BLUE}▸${NC} Historial y reanudación exacta"
     echo -e "  ${BLUE}[5]${NC} ${BOLD}Búsqueda por VOZ${NC}  ${GREEN}▸${NC} Control y búsqueda por micrófono"
     echo -e "  ${RED}[6]${NC} ${BOLD}Limpiar RAM${NC}       ${RED}▸${NC} Mantenimiento y liberación de búfer"
+    echo -e "  ${PURPLE}[7]${NC} ${BOLD}Audio Latino (Web)${NC}${YELLOW}▸${NC} Películas y Series en Español Latino (Sin Torrents)"
     echo -e "  ${RED}[q]${NC} ${BOLD}Salir${NC}\n"
 
     read -p " Elige una opción [1]: " OPTION
@@ -64,6 +65,9 @@ show_menu() {
             read -r
             show_menu
             ;;
+        7|"latino"|"lat")
+            exec latino
+            ;;
         q|Q|"salir"|"exit")
             exit 0
             ;;
@@ -80,6 +84,7 @@ show_help() {
     echo -e "  ${GREEN}moki anime <nombre> [capítulo]${NC}       Busca anime en Nyaa"
     echo -e "  ${GREEN}moki serie <nombre> [temp] [cap]${NC}     Busca series en Cinemeta/Torrentio"
     echo -e "  ${GREEN}moki pelis <nombre>${NC}                  Busca películas directo en Cinemeta"
+    echo -e "  ${GREEN}moki latino <nombre> [temp] [cap]${NC}    Busca películas y series en Audio Latino (Web)"
     echo -e "  ${GREEN}moki continuar${NC}                       Abre tu historial de reanudación"
     echo -e "  ${GREEN}moki voz${NC}                             Búsqueda directa por micrófono"
     echo -e "  ${GREEN}moki limpiar${NC}                         Limpia buffers temporales y RAM"
@@ -111,6 +116,10 @@ case "$1" in
     pelis|peli|p)
         shift
         exec pelis "$@"
+        ;;
+    latino|lat)
+        shift
+        exec latino "$@"
         ;;
     continuar|c)
         exec continuar

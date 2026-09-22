@@ -183,13 +183,14 @@ cp "$SCRIPT_DIR/bin/"* "$TARGET_BIN/"
 chmod +x "$TARGET_BIN/moki"
 chmod +x "$TARGET_BIN/anime"*
 chmod +x "$TARGET_BIN/serie"*
+chmod +x "$TARGET_BIN/latino"*
 chmod +x "$TARGET_BIN/continuar"
 chmod +x "$TARGET_BIN/limpiar"*
 
 # Crear enlace pelis -> serie
 ln -sf "$TARGET_BIN/serie" "$TARGET_BIN/pelis"
 
-echo -e "   ${GREEN}✓ Comandos instalados: moki, anime, serie, pelis, continuar, limpiar${NC}"
+echo -e "   ${GREEN}✓ Comandos instalados: moki, anime, serie, pelis, latino, continuar, limpiar${NC}"
 
 # ------------------------------------------------------------------------------
 # 5. Configuración Universal de MPV y Shaders Anime4K
@@ -242,7 +243,6 @@ linear-downscaling=yes
 alang=es-419,es-la,lat,latino,es,spa,ja,jpn,en
 slang=es-419,es-la,lat,latino,es,spa,en
 audio-pitch-correction=yes
-audio-fallback=yes
 
 # Subtítulos Estilizados
 sub-auto=fuzzy

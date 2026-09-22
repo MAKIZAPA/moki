@@ -180,6 +180,12 @@ if [[ "$1" == "voz" || "$1" == "voice" || "$1" == "-v" ]]; then
     exit 0
 fi
 
+# Modo audio latino (Web Scraping): serie latino <nombre> / pelis latino <nombre>
+if [[ "$1" == "latino" || "$1" == "lat" || "$1" == "--latino" ]]; then
+    shift
+    exec latino "$@"
+fi
+
 # Modo búsqueda por texto: serie buscar <nombre> / pelis buscar <nombre>
 if [[ "$1" == "buscar" || "$1" == "search" || "$1" == "-s" ]]; then
     shift
@@ -221,6 +227,7 @@ echo -e "  ${GREEN}[1]${NC} Buscar Serie o Película por texto"
 echo -e "  ${CYAN}[2]${NC} Buscar por VOZ (habla por el micrófono)"
 echo -e "  ${YELLOW}[3]${NC} Pegar enlace magnet directo"
 echo -e "  ${YELLOW}[4]${NC} Continuar viendo serie o película en progreso"
+echo -e "  ${PURPLE}[5]${NC} Buscar en AUDIO LATINO (Web Scraping - Sin Torrents)"
 echo -e "  ${RED}[q]${NC} Salir\n"
 
 read -p "Elige una opción [1]: " MENU_CHOICE
@@ -237,6 +244,8 @@ elif [[ "$MENU_CHOICE" == "3" ]]; then
     fi
 elif [[ "$MENU_CHOICE" == "4" || "$MENU_CHOICE" == "c" || "$MENU_CHOICE" == "continuar" ]]; then
     exec "$HOME/.local/bin/continuar"
+elif [[ "$MENU_CHOICE" == "5" || "$MENU_CHOICE" == "latino" || "$MENU_CHOICE" == "lat" ]]; then
+    exec latino
 elif [[ "$MENU_CHOICE" == "q" || "$MENU_CHOICE" == "Q" ]]; then
     exit 0
 else
