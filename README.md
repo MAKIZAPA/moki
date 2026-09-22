@@ -85,7 +85,9 @@ cd moki && chmod +x install.sh && ./install.sh
 
 ---
 
-## Atajos en mpv
+## Atajos de Teclado
+
+### En el reproductor (mpv)
 
 Controles de teclado integrados inspirados en emuladores y reproductores de alto rendimiento:
 
@@ -100,6 +102,16 @@ Controles de teclado integrados inspirados en emuladores y reproductores de alto
 | <kbd>Ctrl</kbd> + <kbd>0</kbd> | **Desactivar Shaders** (Imagen original sin procesar) |
 | <kbd>f</kbd> | Pantalla completa |
 | <kbd>q</kbd> | Guardar posición exacta y salir |
+
+### En el historial (`continuar`)
+
+Gestión ágil para descartar semillas no deseadas o pruebas de archivos:
+
+| Tecla | Función |
+| :---: | :--- |
+| <kbd>Enter</kbd> | **Reanudar reproducción** en el segundo exacto o cargar siguiente capítulo |
+| <kbd>Tab</kbd> / <kbd>Ctrl</kbd> + <kbd>D</kbd> | **Eliminar elemento** del historial (ideal para descartar pruebas de seeds) |
+| <kbd>Esc</kbd> | Salir del menú sin cambios |
 
 ---
 
