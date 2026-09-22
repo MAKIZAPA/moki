@@ -184,8 +184,9 @@ def parse_stream_info(stream):
 
     # 1. Detección certera de Audio Latino
     # Se busca palabra completa (boundary \b) para no confundir con 'Latarnie' (polaco) o 'lateral'
+    # También reconoce grupos y encoders latinos reconocidos (dem3nt3, Cinecalidad, LasCositas, etc.)
     is_latino = False
-    if has_latino_flag or "cinecalidad" in full_text:
+    if has_latino_flag or any(g in full_text for g in ["cinecalidad", "dem3nt3", "ben.the.men", "lascositas", "hackstore", "compucalitv"]):
         is_latino = True
     elif re.search(r'\b(latino|lat|dual-lat|audio-latino)\b', full_text):
         if not re.search(r'\b(latarnie|lateral)\b', full_text):
