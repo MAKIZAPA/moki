@@ -273,7 +273,8 @@ def main():
                         str(int(time_pos)),
                         str(mal_id),
                         selected.get("group", ""),
-                        selected.get("release_title", "") or title
+                        selected.get("release_title", "") or title,
+                        str(file_idx)
                     ]
                 elif m_type == "series":
                     cmd = [

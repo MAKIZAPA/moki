@@ -34,7 +34,8 @@ play_stream() {
     local mal_id="${8:-0}"
     local group="${9:-}"
     local release_title="${10:-}"
-    local interactive_flag=""
+    local file_idx="${11:-}"
+    local is_interactive="${12:-}"
     local out_dir="/tmp/webtorrent"
 
     # Limpieza de carpetas de streaming previas
@@ -53,6 +54,7 @@ play_stream() {
   "poster": "$poster",
   "mal_id": $mal_id,
   "magnet": "$target",
+  "file_idx": "$file_idx",
   "size_gb": "$size_gb",
   "group": "$group",
   "release_title": "$release_title"
@@ -65,7 +67,7 @@ EOF
     # Si pesa < 6 GB, usamos RAM pura (/tmp/webtorrent) para cero desgaste de disco
     local int_size="${size_gb%%.*}"
     if [[ "$int_size" =~ ^[0-9]+$ ]] && [ "$int_size" -ge 6 ]; then
-        if [ "$int_size" -gt 30 ]; then
+        if [ -z "$file_idx" ] && [ -z "$INTERACTIVE_FLAG" ] && [ -z "$is_interactive" ] && [ "$int_size" -gt 30 ]; then
             echo -e "${RED}⚠️  El archivo (${size_gb} GB) supera el tope máximo de seguridad de 30 GB configurado.${NC}"
             echo -e "${YELLOW}Selecciona una opción más ligera de la lista para no saturar tu disco.${NC}"
             return 1
@@ -78,12 +80,16 @@ EOF
         echo -e "${GREEN}:: Archivo optimizado: Buffer 100% en memoria RAM (/tmp). Cero desgaste en tu SSD.${NC}"
     fi
 
-    local interactive_flag="${INTERACTIVE_FLAG:-}"
+    local interactive_flag="${INTERACTIVE_FLAG:-$is_interactive}"
+    local select_flag=""
+    if [ -n "$file_idx" ]; then
+        select_flag="-s $file_idx"
+    fi
 
     echo -e "\n${GREEN}:: Conectando y cargando stream en mpv...${NC}"
     echo -e "${YELLOW}Atajos: [TAB] Salta Opening (AniSkip) | [Shift+N] Siguiente cap | [Ctrl+1] IA Anime4K | [q] Salir${NC}\n"
 
-    $STREAM_BIN "$target" -o "$out_dir" --mpv $interactive_flag
+    $STREAM_BIN "$target" -o "$out_dir" $select_flag $interactive_flag --mpv
 
     echo -e "\n${GREEN}:: Limpieza automática: Eliminando buffer y archivos temporales... ¡Listo!${NC}"
     rm -rf /tmp/webtorrent* /tmp/torrent-stream* "$HOME/.cache/webtorrent" 2>/dev/null
@@ -109,6 +115,8 @@ run_search_and_play() {
         local release_title
 
         magnet=$(echo "$output" | grep "^MAGNET:" | head -n1 | cut -d':' -f2-)
+        file_idx=$(echo "$output" | grep -E "^FILE_?IDX:" | head -n1 | cut -d':' -f2-)
+        is_batch=$(echo "$output" | grep "^IS_BATCH:" | head -n1 | cut -d':' -f2-)
         size_gb=$(echo "$output" | grep "^SIZE_GB:" | head -n1 | cut -d':' -f2-)
         title=$(echo "$output" | grep "^TITLE:" | head -n1 | cut -d':' -f2-)
         episode=$(echo "$output" | grep "^EPISODE:" | head -n1 | cut -d':' -f2-)
@@ -123,12 +131,17 @@ run_search_and_play() {
         local start_time="${RESUME_START_TIME:-0}"
         export RESUME_START_TIME=0
 
+        local interactive_arg=""
+        if [ "$is_batch" = "1" ] && [ -z "$file_idx" ]; then
+            interactive_arg="-i"
+        fi
+
         if [ -z "$magnet" ]; then
-            magnet=$(echo "$output" | grep -v "^SIZE_" | grep -v "^TITLE:" | grep -v "^EPISODE:" | grep -v "^EPISODE_NUM:" | grep -v "^TYPE:" | grep -v "^POSTER:" | grep -v "^MAL_ID:" | grep -v "^GROUP:" | grep -v "^RELEASE_TITLE:" | tr -d '\r\n')
+            magnet=$(echo "$output" | grep -v "^SIZE_" | grep -v "^TITLE:" | grep -v "^EPISODE:" | grep -v "^EPISODE_NUM:" | grep -v "^TYPE:" | grep -v "^POSTER:" | grep -v "^MAL_ID:" | grep -v "^GROUP:" | grep -v "^RELEASE_TITLE:" | grep -v -E "^FILE_?IDX:" | grep -v "^IS_BATCH:" | tr -d '\r\n')
         fi
 
         if [ -n "$magnet" ]; then
-            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title"
+            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title" "$file_idx" "$interactive_arg"
         else
             break
         fi

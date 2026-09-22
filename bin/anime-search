@@ -6,6 +6,180 @@ import urllib.request
 import urllib.parse
 import json
 import xml.etree.ElementTree as ET
+import concurrent.futures
+
+CACHE_DIR = os.path.expanduser("~/.cache/moki/torrents")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def bdecode(data):
+    def decode_item(idx):
+        b = data[idx:idx+1]
+        if b == b'i':
+            idx += 1
+            end = data.find(b'e', idx)
+            return int(data[idx:end]), end + 1
+        elif b == b'l':
+            idx += 1
+            res = []
+            while data[idx:idx+1] != b'e':
+                item, idx = decode_item(idx)
+                res.append(item)
+            return res, idx + 1
+        elif b == b'd':
+            idx += 1
+            res = {}
+            while data[idx:idx+1] != b'e':
+                k_bytes, idx = decode_item(idx)
+                v, idx = decode_item(idx)
+                k = k_bytes.decode('utf-8', 'replace') if isinstance(k_bytes, bytes) else str(k_bytes)
+                res[k] = v
+            return res, idx + 1
+        elif b.isdigit():
+            colon = data.find(b':', idx)
+            length = int(data[idx:colon])
+            start = colon + 1
+            return data[start:start+length], start + length
+        raise ValueError(f'Invalid bencode marker at index {idx}')
+    res, _ = decode_item(0)
+    return res
+
+def format_bytes(num_bytes):
+    if num_bytes >= 1024**3:
+        return f"{num_bytes / (1024**3):.2f} GiB"
+    elif num_bytes >= 1024**2:
+        return f"{num_bytes / (1024**2):.1f} MiB"
+    elif num_bytes >= 1024:
+        return f"{num_bytes / 1024:.0f} KiB"
+    return f"{num_bytes} B"
+
+def search_nyaa_html(query, cat="1_0"):
+    url = f"https://nyaa.si/?f=0&c={cat}&q={urllib.parse.quote(query)}&s=seeders&o=desc"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
+    try:
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            html = resp.read().decode("utf-8", "replace")
+            rows = re.findall(r'<tr class="(?:default|success|danger)">(.*?)</tr>', html, re.DOTALL)
+            results = []
+            for r in rows:
+                tm = re.search(r'<a href="/view/\d+"[^>]*title="([^"]+)"', r) or re.search(r'<a href="/view/\d+"[^>]*>([^<]+)</a>', r)
+                sm = re.search(r'<td class="text-center"[^>]*>(\d+)</td>', r)
+                szm = re.search(r'<td class="text-center">([\d\.]+\s*(?:GiB|MiB|KiB))</td>', r)
+                torm = re.search(r'<a href="(/download/\d+\.torrent)"', r)
+                magm = re.search(r'<a href="(magnet:\?[^"]+)"', r)
+                if tm and (torm or magm):
+                    t = tm.group(1).strip()
+                    s = int(sm.group(1)) if sm else 0
+                    sz = szm.group(1).strip() if szm else "0"
+                    tor = "https://nyaa.si" + torm.group(1) if torm else ""
+                    mag = magm.group(1).replace("&amp;", "&") if magm else ""
+                    results.append({
+                        "title": t,
+                        "seeders": s,
+                        "size": sz,
+                        "torrent_url": tor,
+                        "link": tor or mag,
+                        "magnet": mag
+                    })
+            return results
+    except Exception:
+        return []
+
+def find_ep_match(fname, target_ep):
+    base = fname.split('/')[-1]
+    if not base.lower().endswith(('.mkv', '.mp4', '.avi', '.webm')):
+        return False
+    # Excluir temas de apertura/cierre, canciones, trailers, samples y extras
+    if re.search(r'\b(ncop\d*|nced\d*|op\d*|ed\d*|ost|sample|trailer|extras?|preview|menu)\b', base, re.IGNORECASE):
+        return False
+
+    cleaned = re.sub(r'^\[.*?\]\s*', '', base)
+
+    # 1. Número absoluto de episodio entre paréntesis: (005) o (Ep 05) o (170)
+    m_abs = re.search(r'\((?:ep\.?\s*)?0*(\d{1,4})\)', cleaned, re.IGNORECASE)
+    if m_abs:
+        return int(m_abs.group(1)) == target_ep
+
+    # 2. S01E05, S1E05
+    m = re.search(r'\bS\d+E0*(\d{1,4})\b', cleaned, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) == target_ep
+
+    # 3. Episode 05, Ep 05, Cap 05
+    m = re.search(r'\b(?:episode|ep|cap[íi]tulo|cap)\.?\s*0*(\d{1,4})\b', cleaned, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) == target_ep
+
+    # 4. ' - 005 ' o ' - 05 '
+    m = re.search(r'[-_]\s*0*(\d{1,4})(?:\s|v\d|\.|\_|\-|\[|\(|$)', cleaned)
+    if m:
+        return int(m.group(1)) == target_ep
+
+    # 5. Número aislado que no sea resolución ni bitrate
+    m = re.search(r'\b0*(\d{1,4})\b(?!\s*(?:p|bit|fps|k|mb|gb))', cleaned)
+    if m:
+        return int(m.group(1)) == target_ep
+
+    return False
+
+def inspect_batch(cand, target_ep):
+    tor_url = cand.get("torrent_url") or cand.get("link", "")
+    if not tor_url or not tor_url.startswith("http"):
+        return None
+    tor_id = tor_url.split("/")[-1]
+    if not tor_id.endswith(".torrent"):
+        tor_id += ".torrent"
+    cache_path = os.path.join(CACHE_DIR, tor_id)
+    raw_data = None
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                raw_data = f.read()
+        except Exception:
+            raw_data = None
+    if not raw_data:
+        try:
+            req = urllib.request.Request(tor_url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                raw_data = resp.read()
+            with open(cache_path, "wb") as f:
+                f.write(raw_data)
+        except Exception:
+            return None
+
+    try:
+        meta = bdecode(raw_data)
+        info = meta.get("info", {})
+        files = info.get("files")
+        if not files:
+            # Single file torrent
+            fname = info.get("name", b"").decode("utf-8", "replace")
+            if target_ep is None or find_ep_match(fname, target_ep):
+                f_len = info.get("length", 0)
+                return {
+                    "matched_file": fname,
+                    "file_idx": None,
+                    "file_bytes": f_len,
+                    "file_size_str": format_bytes(f_len),
+                    "cache_path": cache_path
+                }
+            return None
+
+        # Multi-file batch torrent
+        for idx, f in enumerate(files):
+            parts = [p.decode("utf-8", "replace") if isinstance(p, bytes) else str(p) for p in f.get("path", [])]
+            fname = parts[-1] if parts else ""
+            if target_ep is not None and find_ep_match(fname, target_ep):
+                f_len = f.get("length", 0)
+                return {
+                    "matched_file": fname,
+                    "file_idx": idx,
+                    "file_bytes": f_len,
+                    "file_size_str": format_bytes(f_len),
+                    "cache_path": cache_path
+                }
+    except Exception:
+        return None
+    return None
 
 def get_anime_meta(anime_name):
     # Formatear con mayúsculas iniciales por defecto (ej. "black torch" -> "Black Torch")
@@ -122,6 +296,7 @@ def fetch_nyaa(query, category="0_0"):
                 items.append({
                     "title": title,
                     "link": link,
+                    "torrent_url": link,
                     "size": size,
                     "seeders": seeders
                 })
@@ -156,9 +331,11 @@ def classify_audio(title):
     es_lat_keywords = [
         "latino", "audio latino", "audio_latino", "doblaje", "doblajes",
         "puya", "puyasubs", "hispamux", "kakumei", "kashikoi", "sub_esp", "sub esp", "sub-esp",
-        "multi-audio", "multi audio"
+        "spa-la", "multi-audio", "multi audio"
     ]
-    if any(k in low for k in es_lat_keywords) or re.search(r"(\[|\()(lat|esp)(\]|\))", low) or "español" in low or "espanol" in low:
+    if (any(k in low for k in es_lat_keywords) or 
+        re.search(r"(\[|\()(lat|esp|spa|spa-la|spa-es)(\]|\))", low) or 
+        "español" in low or "espanol" in low):
         return "LATINO"
     
     return "GLOBAL"
@@ -254,26 +431,91 @@ def main():
     seen = set()
     spanish_results = []
     other_results = []
+    raw_candidates = []
 
+    # 1. Consultas RSS normales de Nyaa
     for q_str, cat in queries:
         items = fetch_nyaa(q_str, cat)
         for item in items:
-            if item["link"] not in seen:
-                seen.add(item["link"])
-                # Filtrar releases francesas que producen audios mudos o solo francés
-                if is_french(item["title"]):
-                    continue
-                # Si estamos buscando un episodio concreto, asegurar que coincida y no sea otro episodio
-                if ep is not None:
-                    parsed_ep = parse_ep_from_title(item["title"])
-                    if parsed_ep is not None and parsed_ep != ep:
-                        continue
-                cls = classify_audio(item["title"])
-                item["cls"] = cls
-                if cls in ("LATINO", "ESP_ESP"):
-                    spanish_results.append(item)
-                else:
-                    other_results.append(item)
+            raw_candidates.append(item)
+
+    # 2. Consulta HTML ordenada por semillas (Nyaa HTML permite s=seeders&o=desc)
+    html_items = search_nyaa_html(name, "1_0")
+    for item in html_items:
+        raw_candidates.append(item)
+
+    batch_candidates = []
+    for item in raw_candidates:
+        u_key = item.get("torrent_url") or item.get("link") or item["title"]
+        if u_key in seen:
+            continue
+        seen.add(u_key)
+
+        # Filtrar releases francesas que producen audios mudos o solo francés
+        if is_french(item["title"]):
+            continue
+
+        low_title = item["title"].lower()
+        size_str = item.get("size", "").lower()
+        m_sz = re.search(r"[\d\.]+", size_str)
+        sz_val = float(m_sz.group(0)) if m_sz else 0.0
+
+        # Detectar si es un candidato a batch / pack
+        is_pack = (
+            any(k in low_title for k in ["batch", "seasons", "season", "complete", "pack", "01-", "01 ~", "001-", "001 ~", "vol.", "vols."]) or
+            ("gib" in size_str and not any(k in size_str for k in ["kib", "mib"]) and sz_val >= 3.0)
+        )
+
+        if ep is not None:
+            if is_pack:
+                batch_candidates.append(item)
+                continue
+            # Para torrents individuales, verificar si coincide el episodio
+            parsed_ep = parse_ep_from_title(item["title"])
+            if parsed_ep is not None and parsed_ep != ep:
+                continue
+
+        cls = classify_audio(item["title"])
+        item["cls"] = cls
+        if cls in ("LATINO", "ESP_ESP"):
+            spanish_results.append(item)
+        else:
+            other_results.append(item)
+
+    # 3. Si se pidió un capítulo específico, inspeccionar batches de alta semilla
+    if ep is not None and batch_candidates:
+        # Ordenar batches candidatos por semillas para inspeccionar los más activos
+        batch_candidates.sort(key=lambda x: x.get("seeders", 0), reverse=True)
+        top_batches = batch_candidates[:6]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_cand = {executor.submit(inspect_batch, cand, ep): cand for cand in top_batches}
+            for fut in concurrent.futures.as_completed(future_to_cand):
+                cand = future_to_cand[fut]
+                try:
+                    res = fut.result()
+                except Exception:
+                    res = None
+                if res and res.get("file_idx") is not None:
+                    cls = classify_audio(cand["title"])
+                    batch_item = {
+                        "title": f"{cand['title']} \033[1;35m[PACK ➔ Cap {ep:02d}]\033[0m",
+                        "raw_title": cand["title"],
+                        "link": cand.get("torrent_url") or cand["link"],
+                        "torrent_url": cand.get("torrent_url", ""),
+                        "magnet": cand.get("magnet", ""),
+                        "cache_path": res.get("cache_path", ""),
+                        "size": res["file_size_str"],
+                        "seeders": cand.get("seeders", 0),
+                        "file_idx": res["file_idx"],
+                        "cls": cls,
+                        "is_batch": True,
+                        "matched_ep": ep
+                    }
+                    if cls in ("LATINO", "ESP_ESP"):
+                        spanish_results.append(batch_item)
+                    else:
+                        other_results.append(batch_item)
 
     # Ordenar por semillas para asegurar streaming rápido
     spanish_results.sort(key=lambda x: x["seeders"], reverse=True)
@@ -308,9 +550,13 @@ def main():
         for item in final_list:
             if pref_group in item["title"].lower() and item["seeders"] > 0:
                 if ep is not None:
-                    p_ep = parse_ep_from_title(item["title"])
-                    if p_ep is not None and p_ep != ep:
-                        continue
+                    if item.get("is_batch"):
+                        if item.get("matched_ep") != ep:
+                            continue
+                    else:
+                        p_ep = parse_ep_from_title(item["title"])
+                        if p_ep is not None and p_ep != ep:
+                            continue
                 log(f"\n\033[1;32m🎯 ¡Coincidencia automática encontrada del grupo '{pref_group.upper()}'!\033[0m")
                 log(f"\033[0;36m   ➔ {item['title']} (🌱 {item['seeders']} seeds)\033[0m\n")
                 selected = item
@@ -357,14 +603,20 @@ def main():
                 size_gb = val
         title_clean, poster, mal_id = get_anime_meta(name)
         group = extract_group(selected['title'])
-        print(f"MAGNET:{selected['link']}")
+        target = selected.get("cache_path") or selected.get("torrent_url") or selected["link"]
+        print(f"MAGNET:{target}")
+        if selected.get("file_idx") is not None:
+            print(f"FILE_IDX:{selected['file_idx']}")
+            print(f"FILEIDX:{selected['file_idx']}")
+        if selected.get("is_batch"):
+            print("IS_BATCH:1")
         print(f"SIZE_GB:{size_gb:.2f}")
         print(f"TITLE:{title_clean}")
         print(f"TYPE:anime")
         print(f"EPISODE_NUM:{ep if ep is not None else 1}")
         print(f"MAL_ID:{mal_id}")
         print(f"GROUP:{group}")
-        print(f"RELEASE_TITLE:{selected['title']}")
+        print(f"RELEASE_TITLE:{selected.get('raw_title', selected['title'])}")
         if ep is not None:
             print(f"EPISODE:Episodio {ep}")
         else:
