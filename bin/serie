@@ -32,6 +32,8 @@ play_stream() {
     local season="${8:-1}"
     local ep_num="${9:-1}"
     local start_time="${10:-${RESUME_START_TIME:-0}}"
+    # Resetear RESUME_START_TIME globalmente para que cualquier salto maratón posterior arranque en 00:00
+    export RESUME_START_TIME=0
     local select_flag=""
     local out_dir="/tmp/webtorrent"
 
@@ -120,7 +122,7 @@ run_search_and_play() {
         [ -z "$season" ] && season=1
         [ -z "$ep_num" ] && ep_num=1
         local start_time="${RESUME_START_TIME:-0}"
-        RESUME_START_TIME=0
+        export RESUME_START_TIME=0
 
         if [ -n "$magnet" ]; then
             play_stream "$magnet" "$file_idx" "$size_gb" "$title" "$episode" "$poster" "$media_type" "$season" "$ep_num" "$start_time"
@@ -142,6 +144,7 @@ run_search_and_play() {
                 echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
                 echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Temporada ${next_season} Episodio ${next_ep}...  ║${NC}"
                 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+                export RESUME_START_TIME=0
                 query="\"$next_title\" $next_season $next_ep"
                 continue
             fi
@@ -196,6 +199,7 @@ if [[ "$1" == magnet:\?* ]]; then
             echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
             echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Temporada ${next_season} Episodio ${next_ep}...  ║${NC}"
             echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+            export RESUME_START_TIME=0
             run_search_and_play "$next_title" "$next_season" "$next_ep"
             break
         fi

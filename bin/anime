@@ -29,6 +29,8 @@ play_stream() {
     local poster="$5"
     local ep_num="${6:-1}"
     local start_time="${7:-${RESUME_START_TIME:-0}}"
+    # Resetear RESUME_START_TIME globalmente para que cualquier salto maratón posterior arranque en 00:00
+    export RESUME_START_TIME=0
     local mal_id="${8:-0}"
     local group="${9:-}"
     local release_title="${10:-}"
@@ -119,7 +121,7 @@ run_search_and_play() {
         [ -z "$ep_num" ] && ep_num=1
         [ -z "$mal_id" ] && mal_id=0
         local start_time="${RESUME_START_TIME:-0}"
-        RESUME_START_TIME=0
+        export RESUME_START_TIME=0
 
         if [ -z "$magnet" ]; then
             magnet=$(echo "$output" | grep -v "^SIZE_" | grep -v "^TITLE:" | grep -v "^EPISODE:" | grep -v "^EPISODE_NUM:" | grep -v "^TYPE:" | grep -v "^POSTER:" | grep -v "^MAL_ID:" | grep -v "^GROUP:" | grep -v "^RELEASE_TITLE:" | tr -d '\r\n')
@@ -145,6 +147,7 @@ run_search_and_play() {
                 echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
                 echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep} de ${next_title}...   ║${NC}"
                 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+                export RESUME_START_TIME=0
                 current_query="$next_title $next_ep"
                 # Recordar el grupo de fansub (ej. VARYG, AnoZu, etc.) para emparejamiento automático
                 if [ -n "$next_grp" ]; then
@@ -208,6 +211,7 @@ if [[ "$1" == magnet:\?* || "$1" == *.torrent || "$1" == http://* || "$1" == htt
             echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${NC}"
             echo -e "${CYAN}${BOLD}║  :: MODO MARATÓN: Cargando Capítulo ${next_ep} de ${next_title}...   ║${NC}"
             echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+            export RESUME_START_TIME=0
             if [ -n "$next_grp" ]; then
                 export PREF_GROUP="$next_grp"
             elif [ -n "$9" ]; then
