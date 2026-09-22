@@ -37,10 +37,17 @@ play_stream() {
     local file_idx="${11:-}"
     local is_interactive="${12:-}"
     local season="${13:-1}"
+    local has_latino="${14:-0}"
     local out_dir="/tmp/webtorrent"
 
-    # Limpieza de carpetas de streaming previas
-    rm -rf /tmp/webtorrent* /tmp/torrent-stream* "$HOME/.cache/webtorrent" 2>/dev/null
+    # Limpieza de carpetas de streaming previas y estado de audio previo
+    rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/latino_stream_ready.json /tmp/latino_audio.aac "$HOME/.cache/webtorrent" 2>/dev/null
+
+    # Pre-carga automática en segundo plano de Audio Latino Web en memoria RAM si se conoce el título
+    if [ -n "$title" ] && [ "$has_latino" != "1" ]; then
+        echo -e "${CYAN}:: Iniciando pre-carga de Audio Latino Web en segundo plano...${NC}"
+        ("$HOME/.local/bin/latino-audio-resolver" "$title" "$season" "$ep_num" --prefetch >/dev/null 2>&1 &)
+    fi
 
     # Escribir metadatos limpios, póster y tiempo de inicio para Discord, MPV y AniSkip
     if [ -n "$title" ]; then
@@ -146,13 +153,7 @@ run_search_and_play() {
         fi
 
         if [ -n "$magnet" ]; then
-            # Si el release de anime no incluye audio en español, pre-cargar en segundo plano en RAM
-            if [ "$has_latino" = "0" ]; then
-                echo -e "${CYAN}:: Release sin doblaje latino. Pre-cargando audio web en segundo plano...${NC}"
-                rm -f /tmp/latino_stream_ready.json /tmp/latino_audio.aac
-                ("$HOME/.local/bin/latino-audio-resolver" "$title" "$season" "$ep_num" --prefetch >/dev/null 2>&1 &)
-            fi
-            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title" "$file_idx" "$interactive_arg" "$season"
+            play_stream "$magnet" "$size_gb" "$title" "$episode" "$poster" "$ep_num" "$start_time" "$mal_id" "$group" "$release_title" "$file_idx" "$interactive_arg" "$season" "$has_latino"
         else
             break
         fi

@@ -32,13 +32,20 @@ play_stream() {
     local season="${8:-1}"
     local ep_num="${9:-1}"
     local start_time="${10:-${RESUME_START_TIME:-0}}"
+    local has_latino="${11:-0}"
     # Resetear RESUME_START_TIME globalmente para que cualquier salto maratón posterior arranque en 00:00
     export RESUME_START_TIME=0
     local select_flag=""
     local out_dir="/tmp/webtorrent"
 
-    # Limpieza de carpetas de streaming previas
-    rm -rf /tmp/webtorrent* /tmp/torrent-stream* "$HOME/.cache/webtorrent" 2>/dev/null
+    # Limpieza de carpetas de streaming previas y estado de audio previo
+    rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/latino_stream_ready.json /tmp/latino_audio.aac "$HOME/.cache/webtorrent" 2>/dev/null
+
+    # Pre-carga automática en segundo plano de Audio Latino Web en memoria RAM si se conoce el título
+    if [ -n "$title" ] && [ "$has_latino" != "1" ]; then
+        echo -e "${CYAN}:: Iniciando pre-carga de Audio Latino Web en segundo plano...${NC}"
+        ("$HOME/.local/bin/latino-audio-resolver" "$title" "$season" "$ep_num" --prefetch >/dev/null 2>&1 &)
+    fi
 
     # Escribir metadatos limpios, póster y tiempo de inicio para Discord y MPV
     if [ -n "$title" ]; then
@@ -127,13 +134,7 @@ run_search_and_play() {
         export RESUME_START_TIME=0
 
         if [ -n "$magnet" ]; then
-            # Si el seed no tiene doblaje latino, iniciar pre-carga web en RAM en segundo plano
-            if [ "$has_latino" = "0" ]; then
-                echo -e "${CYAN}:: Seed sin doblaje latino. Pre-cargando audio web en segundo plano...${NC}"
-                rm -f /tmp/latino_stream_ready.json /tmp/latino_audio.aac
-                ("$HOME/.local/bin/latino-audio-resolver" "$title" "$season" "$ep_num" --prefetch >/dev/null 2>&1 &)
-            fi
-            play_stream "$magnet" "$file_idx" "$size_gb" "$title" "$episode" "$poster" "$media_type" "$season" "$ep_num" "$start_time"
+            play_stream "$magnet" "$file_idx" "$size_gb" "$title" "$episode" "$poster" "$media_type" "$season" "$ep_num" "$start_time" "$has_latino"
         else
             break
         fi

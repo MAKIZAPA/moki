@@ -184,6 +184,7 @@ chmod +x "$TARGET_BIN/moki"
 chmod +x "$TARGET_BIN/anime"*
 chmod +x "$TARGET_BIN/serie"*
 chmod +x "$TARGET_BIN/latino"*
+chmod +x "$TARGET_BIN/audio-aligner"*
 chmod +x "$TARGET_BIN/continuar"
 chmod +x "$TARGET_BIN/limpiar"*
 

@@ -54,8 +54,8 @@
   <tr>
     <td width="50%">
       <img src="https://img.shields.io/badge/WEB_STREAM-MULTI--PROVIDER-10b981?style=flat-square" alt="Web Latino" /><br/>
-      <b>Audio Latino Web & Auto-Sync</b><br/>
-      Streaming directo y <b>Pre-carga en segundo plano</b> con <b>Memoria de Sincronía</b>. Si eliges un seed en idioma original, precarga el doblaje web automáticamente en RAM mientras conecta el enjambre y recuerda el desfase exacto por serie (<kbd>L</kbd> / <kbd>Alt+z</kbd> / <kbd>Alt+x</kbd>).
+      <b>Audio Latino Web & Auto-Sync Acústico</b><br/>
+      Auto-inyección transparente y <b>Pre-carga en RAM</b> sin intervención manual. Si eliges un seed en versión original, detecta automáticamente el desfase por distribuidora (Amazon, Netflix, HBO, Disney) y sincroniza al milisegundo mediante <b>alineación acústica por correlación cruzada (FFT)</b> con memoria persistente por serie.
     </td>
     <td width="50%">
       <img src="https://img.shields.io/badge/AUDIO_FILTER-LATINO_&_ESPAÑA-0071C5?style=flat-square" alt="Audio" /><br/>

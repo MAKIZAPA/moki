@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+# ==============================================================================
+# MOKI - Alineador Acústico de Audio (Acoustic Cross-Correlation Auto-Sync)
+# Compara de forma matemática las ondas sonoras del video original vs el audio
+# latino web usando FFT Cross-Correlation (numpy) para auto-sincronizar al milisegundo.
+# Autor: @makizapa
+# ==============================================================================
+
+import os
+import sys
+import time
+import json
+import socket
+import subprocess
+
+try:
+    import numpy as np
+except ImportError:
+    sys.exit(0)
+
+SYNC_FILE = os.path.expanduser("~/.config/streaming-cli/sync_offsets.json")
+MPV_SOCKET = "/tmp/mpv-socket"
+
+def send_mpv_command(cmd_obj):
+    if not os.path.exists(MPV_SOCKET):
+        return False
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(2.0)
+        s.connect(MPV_SOCKET)
+        payload = json.dumps(cmd_obj).encode("utf-8") + b"\n"
+        s.sendall(payload)
+        s.close()
+        return True
+    except Exception:
+        return False
+
+def save_offset_for_series(title, delay):
+    if not title:
+        return
+    try:
+        os.makedirs(os.path.dirname(SYNC_FILE), exist_ok=True)
+        data = {}
+        if os.path.exists(SYNC_FILE):
+            with open(SYNC_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        clean_key = "".join(c for c in title.lower() if c.isalnum())
+        data[clean_key] = round(delay, 3)
+        with open(SYNC_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(0)
+
+    video_src = sys.argv[1]
+    web_audio_url = sys.argv[2]
+    title = sys.argv[3] if len(sys.argv) > 3 else ""
+
+    # Esperar 6 segundos para que mpv y webtorrent hayan iniciado búfer
+    time.sleep(6.0)
+
+    # Si mpv ya se cerró, abortar silenciosamente
+    if not os.path.exists(MPV_SOCKET):
+        sys.exit(0)
+
+    fs = 8000
+    win = 80  # 100 Hz envelope resolution (10ms)
+    win_sec = win / float(fs)
+
+    vid_start = 10.0
+    vid_dur = 14.0
+
+    aud_start = 5.0
+    aud_dur = 24.0
+
+    # 1. Extraer fragmento de audio del video original
+    cmd_vid = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-ss", str(vid_start), "-t", str(vid_dur),
+        "-i", video_src,
+        "-vn", "-ac", "1", "-ar", str(fs),
+        "-f", "f32le", "pipe:1"
+    ]
+
+    # 2. Extraer fragmento de audio del stream latino
+    cmd_aud = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: https://flaswish.com/\r\n",
+        "-ss", str(aud_start), "-t", str(aud_dur),
+        "-i", web_audio_url,
+        "-vn", "-ac", "1", "-ar", str(fs),
+        "-f", "f32le", "pipe:1"
+    ]
+
+    try:
+        p_vid = subprocess.Popen(cmd_vid, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        raw_vid, _ = p_vid.communicate(timeout=15)
+
+        p_aud = subprocess.Popen(cmd_aud, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        raw_aud, _ = p_aud.communicate(timeout=15)
+    except Exception:
+        sys.exit(0)
+
+    if not raw_vid or not raw_aud:
+        sys.exit(0)
+
+    arr_vid = np.frombuffer(raw_vid, dtype=np.float32)
+    arr_aud = np.frombuffer(raw_aud, dtype=np.float32)
+
+    # Validar longitud mínima (al menos 8 segundos de audio)
+    if len(arr_vid) < fs * 8 or len(arr_aud) < fs * 12:
+        sys.exit(0)
+
+    # Calcular envolvente de energía (Moving average del valor absoluto)
+    # Suprime diferencias de fonemas de idioma y realza ritmo, silencios y música/OST
+    env_vid = np.convolve(np.abs(arr_vid), np.ones(win)/win, mode="valid")[::win]
+    env_aud = np.convolve(np.abs(arr_aud), np.ones(win)/win, mode="valid")[::win]
+
+    std_vid = np.std(env_vid)
+    std_aud = np.std(env_aud)
+    if std_vid < 1e-4 or std_aud < 1e-4:
+        # Pista en silencio absoluto, no se puede correlacionar con certeza
+        sys.exit(0)
+
+    # Normalizar señales
+    env_vid = (env_vid - np.mean(env_vid)) / std_vid
+    env_aud = (env_aud - np.mean(env_aud)) / std_aud
+
+    # Correlación cruzada
+    corr = np.correlate(env_aud, env_vid, mode="valid")
+    if len(corr) == 0:
+        sys.exit(0)
+
+    max_idx = int(np.argmax(corr))
+    confidence = float(corr[max_idx]) / float(len(env_vid))
+
+    # Tiempo en el audio latino donde coincide el video
+    t_match = aud_start + (max_idx * win_sec)
+    computed_delay = round(t_match - vid_start, 3)
+
+    # Filtro de seguridad:
+    # 1. Desfase dentro del rango físico verosímil de intros (-6.0s a +4.0s)
+    # 2. Confianza matemática suficiente (>= 0.38)
+    if -6.0 <= computed_delay <= 4.0 and confidence >= 0.38:
+        # Guardar en memoria de serie
+        if title:
+            save_offset_for_series(title, computed_delay)
+
+        # Aplicar en MPV en caliente
+        send_mpv_command({"command": ["set_property", "audio-delay", computed_delay]})
+        send_mpv_command({"command": ["show-text", f"🎯 Sincronía acústica calibrada: {computed_delay:+.3f}s", 4000]})
+
+if __name__ == "__main__":
+    main()
