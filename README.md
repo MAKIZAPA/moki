@@ -40,8 +40,8 @@
   <tr>
     <td width="50%">
       <img src="https://img.shields.io/badge/RAM_BUFFER-100%25_MEMORY-ffd700?style=flat-square" alt="RAM" /><br/>
-      <b>Zero-Wear SSD</b><br/>
-      El búfer de streaming corre directamente en <code>/tmp</code> (memoria RAM), evitando cualquier desgaste o escritura en tu disco SSD.
+      <b>Zero-Wear SSD & Batch Packs</b><br/>
+      El búfer de streaming corre directamente en <code>/tmp</code> (memoria RAM), evitando cualquier desgaste o escritura en tu SSD. Soporta <b>Streaming Selectivo de Packs</b> (temporadas de 50GB-250GB) extrayendo únicamente el capítulo solicitado.
     </td>
     <td width="50%">
       <img src="https://img.shields.io/badge/AUTONOMOUS-FANSUB_CHAIN-blue?style=flat-square" alt="Fansub" /><br/>
