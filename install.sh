@@ -251,14 +251,23 @@ sub-font='sans-serif'
 sub-font-size=48
 sub-border-size=2.5
 
-# Búfer y Streaming Fluido (Memoria RAM)
+# Búfer extendido para streaming fluido y salto inmediato sin lag
 cache=yes
-demuxer-max-bytes=250M
-demuxer-max-back-bytes=100M
+cache-secs=300
+demuxer-max-bytes=350M
+demuxer-max-back-bytes=150M
+demuxer-readahead-secs=120
+force-seekable=yes
+hr-seek=yes
+hr-seek-framedrop=yes
+audio-buffer=0.25
 
 # Compatibilidad con streams de audio web
 user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
 referrer="https://flaswish.com/"
+
+# Servidor IPC para sincronización acústica en tiempo real
+input-ipc-server=/tmp/mpv-socket
 EOF
 
 echo -e "   ${GREEN}✓ mpv.conf, input.conf y 5 scripts Lua instalados.${NC}"

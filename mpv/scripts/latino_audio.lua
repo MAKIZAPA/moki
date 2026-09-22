@@ -2,7 +2,8 @@
 -- MOKI - Inyección de Audio Latino Web para mpv
 -- Conecta al vuelo la pista de audio en Español Latino desde
 -- Flixlatam / Cuevana 3 / JKAnime sobre cualquier seed de Torrent
--- Con Sincronización Automática Acústica y Memoria por Serie
+-- Con Sincronización Automática por Proveedor (Flix 0.0s / Cuevana -2.3s)
+-- y Memoria Persistente Independiente por Serie y Servidor.
 -- Atajos: [L] Alternar / Recargar | [Alt+x] / [Alt+z] Sincronía fina
 -- Autor: @makizapa
 -- ==========================================================
@@ -20,6 +21,7 @@ local ALIGNER_BIN = os.getenv("HOME") .. "/.local/bin/audio-aligner"
 local is_fetching = false
 local latino_injected = false
 local prefetch_timer = nil
+local current_provider = "FLIX"
 
 local function read_json(path)
     local f = io.open(path, "r")
@@ -51,38 +53,65 @@ local function get_clean_media_title()
     return raw:gsub("%.%w+$", ""):gsub("^%b[]%s*", ""):gsub("^%(.-%)%s*", "")
 end
 
-local function get_saved_sync_offset(title)
-    if not title or title == "" then return 0.0 end
-    local data = read_json(SYNC_OFFSETS_FILE)
-    if not data then return 0.0 end
-    local key = string.lower(title):gsub("[^%w]", "")
-    return tonumber(data[key]) or 0.0
+local function get_provider_key(title, provider)
+    local c_title = string.lower(title or ""):gsub("[^%w]", "")
+    local c_prov = string.upper(provider or current_provider or "FLIX"):gsub("[^%w]", "")
+    return c_title .. "__" .. c_prov
 end
 
-local function save_sync_offset(title, delay)
+local function get_saved_sync_offset(title, provider)
+    if not title or title == "" then return nil end
+    local data = read_json(SYNC_OFFSETS_FILE)
+    if not data then return nil end
+
+    local p_key = get_provider_key(title, provider)
+    if data[p_key] ~= nil then
+        return tonumber(data[p_key])
+    end
+
+    -- Fallback a clave tradicional si existe
+    local simple_key = string.lower(title):gsub("[^%w]", "")
+    if data[simple_key] ~= nil then
+        return tonumber(data[simple_key])
+    end
+
+    return nil
+end
+
+local function save_sync_offset(title, delay, provider)
     if not title or title == "" then return end
     local data = read_json(SYNC_OFFSETS_FILE) or {}
-    local key = string.lower(title):gsub("[^%w]", "")
-    data[key] = delay
+    local p_key = get_provider_key(title, provider)
+    data[p_key] = delay
     os.execute("mkdir -p " .. SYNC_DIR)
     write_json(SYNC_OFFSETS_FILE, data)
 end
 
 local function show_delay_osd(saved)
     local delay = mp.get_property_number("audio-delay", 0)
-    local label = saved and " [Guardado para esta serie]" or " [Alt+z / Alt+x]"
+    local prov_tag = current_provider or "Web"
+    local label = saved and string.format(" [Guardado para %s]", prov_tag) or " [Alt+z / Alt+x]"
     mp.osd_message(string.format("⏱️ Sincronía de Audio: %+.3f seg%s", delay, label), 1.8)
 end
 
 -- Cálculo y detección inteligente de sincronía por serie y distribuidora
-local function calculate_smart_delay(title)
-    -- 1. Si ya existe un valor recordado para esta serie
-    local saved = get_saved_sync_offset(title)
-    if saved ~= 0.0 then
-        return saved, "recordada"
+local function calculate_smart_delay(title, provider)
+    local prov = string.upper(provider or current_provider or "FLIX")
+
+    -- 1. Si ya existe un valor recordado para esta serie y este proveedor
+    local saved = get_saved_sync_offset(title, prov)
+    if saved ~= nil then
+        return saved, "recordada (" .. prov .. ")"
     end
 
-    -- 2. Detección automática por tags de distribuidora en nombre de archivo / release
+    -- 2. Regla de oro para FLIX (FlixLatam):
+    -- FlixLatam entrega ripeos WEB-DL puros 1:1 con las cortinillas idénticas al torrent original
+    if prov:find("FLIX") then
+        save_sync_offset(title, 0.0, prov)
+        return 0.0, "FlixLatam 1:1 (Sin desfase)"
+    end
+
+    -- 3. Si el proveedor es Cuevana 3 (u otro que recorta intros), aplicar compensación del logo
     local raw_title = mp.get_property("media-title") or mp.get_property("filename") or ""
     local media = read_json(MEDIA_FILE) or {}
     local full_ctx = string.upper(table.concat({
@@ -97,41 +126,37 @@ local function calculate_smart_delay(title)
 
     if full_ctx:find("AMZN") or full_ctx:find("AMAZON") or full_ctx:find("EDITH") or full_ctx:find("PRIME") then
         detected_delay = -2.300
-        label = "Amazon Prime Video"
+        label = "Cuevana 3 (Logo Amazon Prime)"
     elseif full_ctx:find("HMAX") or full_ctx:find("HBOMAX") or full_ctx:find("HBO") then
         detected_delay = -3.000
-        label = "HBO Max"
+        label = "Cuevana 3 (Logo HBO Max)"
     elseif full_ctx:find("DSNP") or full_ctx:find("DISNEY") then
         detected_delay = -2.500
-        label = "Disney+"
+        label = "Cuevana 3 (Logo Disney+)"
     elseif full_ctx:find("NF%.") or full_ctx:find("NETFLIX") or full_ctx:find("NF[%.%-_]") then
         detected_delay = -4.000
-        label = "Netflix"
+        label = "Cuevana 3 (Logo Netflix)"
     elseif full_ctx:find("ATVP") or full_ctx:find("APPLE") then
         detected_delay = -2.000
-        label = "Apple TV+"
+        label = "Cuevana 3 (Logo Apple TV+)"
     elseif full_ctx:find("HULU") then
         detected_delay = -2.500
-        label = "Hulu"
+        label = "Cuevana 3 (Logo Hulu)"
     elseif full_ctx:find("PARAMOUNT") or full_ctx:find("PMTP") then
         detected_delay = -2.500
-        label = "Paramount+"
+        label = "Cuevana 3 (Logo Paramount+)"
     end
 
-    if detected_delay ~= 0.0 then
-        save_sync_offset(title, detected_delay)
-        return detected_delay, label
-    end
-
-    return 0.0, "estándar"
+    save_sync_offset(title, detected_delay, prov)
+    return detected_delay, label
 end
 
--- Ajustes rápidos de sincronía de audio con persistencia automática
+-- Ajustes rápidos de sincronía de audio con persistencia automática por proveedor
 local function delay_plus()
     local cur = mp.get_property_number("audio-delay", 0)
     local nxt = cur + 0.100
     mp.set_property_number("audio-delay", nxt)
-    save_sync_offset(get_clean_media_title(), nxt)
+    save_sync_offset(get_clean_media_title(), nxt, current_provider)
     show_delay_osd(true)
 end
 
@@ -139,7 +164,7 @@ local function delay_minus()
     local cur = mp.get_property_number("audio-delay", 0)
     local nxt = cur - 0.100
     mp.set_property_number("audio-delay", nxt)
-    save_sync_offset(get_clean_media_title(), nxt)
+    save_sync_offset(get_clean_media_title(), nxt, current_provider)
     show_delay_osd(true)
 end
 
@@ -147,7 +172,7 @@ local function delay_plus_large()
     local cur = mp.get_property_number("audio-delay", 0)
     local nxt = cur + 0.500
     mp.set_property_number("audio-delay", nxt)
-    save_sync_offset(get_clean_media_title(), nxt)
+    save_sync_offset(get_clean_media_title(), nxt, current_provider)
     show_delay_osd(true)
 end
 
@@ -155,14 +180,14 @@ local function delay_minus_large()
     local cur = mp.get_property_number("audio-delay", 0)
     local nxt = cur - 0.500
     mp.set_property_number("audio-delay", nxt)
-    save_sync_offset(get_clean_media_title(), nxt)
+    save_sync_offset(get_clean_media_title(), nxt, current_provider)
     show_delay_osd(true)
 end
 
 local function delay_reset()
     mp.set_property_number("audio-delay", 0.0)
-    save_sync_offset(get_clean_media_title(), 0.0)
-    mp.osd_message("⏱️ Sincronía de Audio reseteada: 0.000 seg [Guardado]", 1.8)
+    save_sync_offset(get_clean_media_title(), 0.0, current_provider)
+    mp.osd_message(string.format("⏱️ Sincronía reseteada: 0.000 seg [Guardado para %s]", current_provider), 1.8)
 end
 
 -- Inyectar y aplicar sincronía
@@ -172,19 +197,20 @@ local function inject_stream_data(data, title, is_auto)
     if not target or target == "" then return end
 
     local prov = data.provider or "Web"
+    current_provider = prov
     local mode = data.audio_file and "RAM" or "Web"
     local track_title = string.format("Español Latino (%s • %s)", mode, prov)
 
     mp.commandv("audio-add", target, "select", track_title, "spa")
     latino_injected = true
 
-    -- Aplicar sincronía automática inteligente
-    local smart_delay, label = calculate_smart_delay(title)
+    -- Aplicar sincronía automática inteligente por proveedor
+    local smart_delay, label = calculate_smart_delay(title, prov)
+    mp.set_property_number("audio-delay", smart_delay)
     if smart_delay ~= 0.0 then
-        mp.set_property_number("audio-delay", smart_delay)
         mp.osd_message(string.format("🎙️ ¡Audio Latino conectado!\n⏱️ Sincronía automática: %+.3fs [%s]", smart_delay, label), 4.5)
     else
-        mp.osd_message("🎙️ ¡Audio Latino conectado!\n⏱️ Sincronía: 0.000s [Estándar]", 4.0)
+        mp.osd_message(string.format("🎙️ ¡Audio Latino conectado!\n⏱️ Sincronía perfecta: 0.000s [%s]", label), 4.0)
     end
 
     -- Iniciar alineador acústico en segundo plano para calibración fina matemática (FFT)
