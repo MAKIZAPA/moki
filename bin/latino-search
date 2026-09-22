@@ -13,6 +13,8 @@ import json
 import hashlib
 import shutil
 import subprocess
+import difflib
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -31,6 +33,29 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101
 def log(msg="", end="\n"):
     sys.stderr.write(f"{msg}{end}")
     sys.stderr.flush()
+
+def normalize_title(t: str) -> str:
+    if not t:
+        return ""
+    t = unicodedata.normalize("NFKD", t).encode("ASCII", "ignore").decode("utf-8")
+    t = t.lower()
+    t = re.sub(r"[^a-z0-9\s]", " ", t)
+    return " ".join(t.split())
+
+def is_title_match(title1: str, title2: str, threshold: float = 0.75) -> bool:
+    norm1 = normalize_title(title1)
+    norm2 = normalize_title(title2)
+    if not norm1 or not norm2:
+        return False
+    if norm1 == norm2:
+        return True
+    if norm1 in norm2 or norm2 in norm1:
+        shorter = norm1 if len(norm1) < len(norm2) else norm2
+        longer = norm2 if len(norm1) < len(norm2) else norm1
+        if len(shorter.split()) >= 2 or len(shorter) >= 6:
+            return True
+    ratio = difflib.SequenceMatcher(None, norm1, norm2).ratio()
+    return ratio >= threshold
 
 def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
     if not shutil.which("fzf") or not sys.stdin.isatty():
@@ -601,7 +626,7 @@ def extract_stream_direct(session, provider: str, page_url: str):
         return extract_stream_jkanime(session, page_url)
     return None, None, None
 
-def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dict, all_results: list):
+def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dict, all_results: list, user_query: str = ""):
     primary_prov = chosen_item.get("provider", "flixlatam")
     primary_label = chosen_item.get("provider_label", "FLIX")
     is_series = chosen_item.get("is_series", False)
@@ -617,7 +642,7 @@ def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dic
 
     # Si falló, intentar fallback automático
     log(f"\n{YELLOW}:: [AVISO] Servidor no respondió en {primary_label}.{NC}")
-    log(f"{CYAN}:: Activando respaldo automático en servidores alternativos (Cuevana 3 / Flixlatam / JKAnime)...{NC}")
+    log(f"{CYAN}:: Activando respaldo automático en servidores alternativos...{NC}")
 
     # Fallback order
     fb_providers = []
@@ -626,30 +651,48 @@ def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dic
     elif primary_prov == "cuevana3":
         fb_providers = ["flixlatam", "jkanime"]
     else:
-        fb_providers = ["cuevana3", "flixlatam"]
+        fb_providers = ["flixlatam", "cuevana3"]
 
     for fb_prov in fb_providers:
         fb_label = "CUEV3" if fb_prov == "cuevana3" else ("FLIX" if fb_prov == "flixlatam" else "JKAN")
-        # Buscar en all_results primero
+        
+        # 1. Buscar en all_results con validación estricta de título
         matching_fb = [
             it for it in all_results
-            if it.get("provider") == fb_prov and it.get("is_series", False) == is_series
+            if it.get("provider") == fb_prov 
+            and it.get("is_series", False) == is_series 
+            and (is_title_match(title, it.get("title", "")) or (user_query and is_title_match(user_query, it.get("title", ""))))
         ]
 
-        # Si no estaba en all_results, buscarlo en vivo
+        # 2. Si no estaba en all_results con título válido, buscar en vivo en el proveedor alternativo
         if not matching_fb:
+            candidates = []
             if fb_prov == "cuevana3":
-                matching_fb = [it for it in search_cuevana3(session, title) if it.get("is_series", False) == is_series]
+                candidates = search_cuevana3(session, title)
+                if not candidates and user_query and user_query != title:
+                    candidates = search_cuevana3(session, user_query)
             elif fb_prov == "flixlatam":
-                matching_fb = [it for it in search_flixlatam(session, title) if it.get("is_series", False) == is_series]
+                candidates = search_flixlatam(session, title)
+                if not candidates and user_query and user_query != title:
+                    candidates = search_flixlatam(session, user_query)
             elif fb_prov == "jkanime":
-                matching_fb = [it for it in search_jkanime(session, title)]
+                candidates = search_jkanime(session, title)
+                if not candidates and user_query and user_query != title:
+                    candidates = search_jkanime(session, user_query)
 
+            # Filtrar candidatos estrictamente por tipo y título (¡NUNCA FORZAR COINCIDENCIAS FALSAS!)
+            for cand in candidates:
+                if cand.get("is_series", False) == is_series:
+                    if is_title_match(title, cand.get("title", "")) or (user_query and is_title_match(user_query, cand.get("title", ""))):
+                        matching_fb.append(cand)
+
+        # Si no hay ninguna coincidencia real, NO forzar y pasar al siguiente proveedor
         if not matching_fb:
+            log(f"{YELLOW}:: No se encontró versión equivalente para '{title}' en {fb_label}.{NC}")
             continue
 
         fb_media = matching_fb[0]
-        log(f"{BLUE}:: Comprobando alternativa en {fb_label}: '{fb_media['title']}'...{NC}")
+        log(f"{BLUE}:: Comprobando alternativa verificada en {fb_label}: '{fb_media['title']}'...{NC}")
 
         if is_series:
             fb_eps = get_episodes_for_item(session, fb_media)
@@ -670,12 +713,18 @@ def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dic
                 if fb_st:
                     log(f"{GREEN}:: ¡Respaldo exitoso en {fb_label}! Transmitiendo capítulo {target_ep}.{NC}")
                     return fb_st, fb_ref, f"{fb_lang} ({fb_label})"
+                else:
+                    log(f"{YELLOW}:: El capítulo {target_ep} tampoco respondió en {fb_label}.{NC}")
+            else:
+                log(f"{YELLOW}:: El capítulo {target_ep} no existe en {fb_label}.{NC}")
         else:
             # Película
             fb_st, fb_ref, fb_lang = extract_stream_direct(session, fb_prov, fb_media["url"])
             if fb_st:
                 log(f"{GREEN}:: ¡Respaldo exitoso en {fb_label}! Transmitiendo película.{NC}")
                 return fb_st, fb_ref, f"{fb_lang} ({fb_label})"
+            else:
+                log(f"{YELLOW}:: La película tampoco respondió en {fb_label}.{NC}")
 
     return None, None, None
 
@@ -744,21 +793,26 @@ def main():
         fzf_lines.append(line)
 
     chosen = None
-    # Si viene con temporada o capítulo específico vía CLI y coincide un resultado exacto
+    # Si viene con temporada o capítulo específico vía CLI y coincide un resultado
     if (target_season is not None or target_episode is not None) and len(results) > 0:
-        # Priorizar coincidencias exactas que sean series
+        # 1. Priorizar coincidencia estricta que sea serie
         for r in results:
-            if r.get("is_series") and r["title"].strip().lower() == query.strip().lower():
+            if r.get("is_series") and is_title_match(query, r["title"]):
                 chosen = r
                 break
         if not chosen:
-            # Siguiente mejor serie
+            # 2. Coincidencia difusa con ratio aceptable (>= 0.40)
+            best_r = None
+            best_ratio = 0.0
             for r in results:
                 if r.get("is_series"):
-                    chosen = r
-                    break
-        if not chosen:
-            chosen = results[0]
+                    ratio = difflib.SequenceMatcher(None, normalize_title(query), normalize_title(r["title"])).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_r = r
+            if best_r and best_ratio >= 0.40:
+                chosen = best_r
+        # Si no hubo coincidencia clara, no forzar una serie aleatoria: chosen quedará None y abrirá el menú interactivo para que el usuario elija.
 
     if not chosen:
         c_idx, used_fzf = select_with_fzf(
@@ -849,7 +903,7 @@ def main():
             ep_name = f"Temporada {selected_season} • Episodio {selected_ep_num} ({chosen_ep_info['name']})"
 
     log(f"\n{CYAN}:: Extrayendo stream para {BOLD}{media_title}{NC}...")
-    stream_url, referer, lang = extract_stream_with_fallback(session, chosen, chosen_ep_info, results)
+    stream_url, referer, lang = extract_stream_with_fallback(session, chosen, chosen_ep_info, results, user_query=query)
 
     if not stream_url:
         log(f"{RED}:: No se pudo resolver un stream activo en ninguno de los servidores disponibles.{NC}")
