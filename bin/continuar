@@ -20,7 +20,7 @@ NC = "\033[0m"
 
 def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
     if not shutil.which("fzf"):
-        return None, False
+        return None, False, ""
     try:
         cmd = [
             "fzf",
@@ -29,7 +29,8 @@ def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
             "--layout=reverse",
             "--border",
             f"--prompt={prompt}",
-            "--cycle"
+            "--cycle",
+            "--expect=ctrl-d,del,tab"
         ]
         if header:
             cmd.append(f"--header={header}")
@@ -41,14 +42,23 @@ def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
         )
         out, _ = p.communicate(input="\n".join(items_text))
         if p.returncode == 0 and out.strip():
-            m = re.search(r"\[\s*(\d+)\s*\]", out)
+            lines = [l for l in out.splitlines() if l.strip()]
+            if len(lines) >= 2:
+                key_pressed = lines[0].strip().lower()
+                selected_line = lines[1]
+            elif len(lines) == 1:
+                key_pressed = ""
+                selected_line = lines[0]
+            else:
+                return None, True, ""
+            m = re.search(r"\[\s*(\d+)\s*\]", selected_line)
             if m:
-                return int(m.group(1)) - 1, True
+                return int(m.group(1)) - 1, True, key_pressed
         elif p.returncode in (1, 130):
-            return None, True
+            return None, True, ""
     except Exception:
         pass
-    return None, False
+    return None, False, ""
 
 def format_seconds(secs):
     secs = int(secs)
@@ -131,17 +141,25 @@ def main():
 
             fzf_lines.append(f"\033[1;36m[{i:2d}]\033[0m \033[1;37m{title}\033[0m \033[0;36m[{type_icon}]\033[0m  {status_info}")
 
-        c_idx, used_fzf = select_with_fzf(
+        c_idx, used_fzf, key_pressed = select_with_fzf(
             fzf_lines,
             prompt="Reanudar ▸ ",
-            header="Historial de reproducción | ↑↓ Navega | Escribe para buscar | Enter = Continuar | Esc = Salir"
+            header="Historial | Enter = Reanudar | Tab / Ctrl+D = Borrar de la lista | Esc = Salir"
         )
 
         selected = None
         if used_fzf:
             if c_idx is None:
                 sys.exit(0)
-            _, selected = items[c_idx]
+            if key_pressed in ("ctrl-d", "del", "tab"):
+                del_key, del_item = items[c_idx]
+                del history[del_key]
+                save_history(history)
+                print(f"\n{RED}🗑️  '{del_item.get('title')}' eliminado del historial.{NC}\n")
+                time.sleep(0.6)
+                continue
+            else:
+                _, selected = items[c_idx]
         else:
             # Mostrar lista clásica si no se usa fzf
             for i, (key, it) in enumerate(items, 1):
@@ -172,7 +190,7 @@ def main():
 
             print(f"{CYAN}────────────────────────────────────────────────────────────────{NC}")
             print(f"  {YELLOW}Ingresa el número [1-{len(items)}] para continuar viendo{NC}")
-            print(f"  {RED}[d <núm>]{NC} Borrar del historial (ej. 'd 2')  |  {RED}[q]{NC} Salir\n")
+            print(f"  {RED}[d <núm>]{NC} Borrar este elemento del historial (ej. 'd 1')  |  {RED}[q]{NC} Salir\n")
 
             try:
                 choice = input(f"{BOLD}Selección: {NC}").strip()
@@ -191,7 +209,8 @@ def main():
                         del_key, del_item = items[idx]
                         del history[del_key]
                         save_history(history)
-                        print(f"{GREEN}'{del_item.get('title')}' eliminado del historial.{NC}")
+                        print(f"\n{RED}🗑️  '{del_item.get('title')}' eliminado del historial.{NC}\n")
+                        time.sleep(0.6)
                         continue
 
             if choice.isdigit():
