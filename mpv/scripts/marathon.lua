@@ -106,7 +106,7 @@ local function trigger_marathon_next()
     }
 
     write_json(MARATHON_NEXT_FILE, next_data)
-    mp.osd_message(string.format("🍿 Modo Maratón: Cargando Capítulo %d...", cur_ep + 1), 3)
+    mp.osd_message(string.format(":: Modo Maraton: Cargando Capitulo %d...", cur_ep + 1), 3)
     mp.add_timeout(0.3, function()
         mp.command("quit")
     end)
@@ -124,7 +124,7 @@ local function start_countdown()
 
     countdown_timer = mp.add_periodic_timer(1.0, function()
         if countdown_val > 0 then
-            mp.osd_message(string.format("🎉 Fin del capítulo\n▶️ Capítulo %d en %ds... [ENTER ahora / 'q' salir]", 
+            mp.osd_message(string.format(":: Fin del capitulo\n-> Capitulo %d en %ds... [ENTER ahora / 'q' salir]", 
                 next_ep, countdown_val), 1.2)
             countdown_val = countdown_val - 1
         else

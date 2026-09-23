@@ -70,7 +70,7 @@ local function fetch_skip_times(mal_id, ep_num)
         end
 
         if op_start and op_end then
-            mp.osd_message(string.format("🎵 AniSkip listo: Opening en %s ➔ %s ([TAB] para saltar)", 
+            mp.osd_message(string.format(":: AniSkip listo: Opening en %s -> %s ([TAB] para saltar)", 
                 format_time(op_start), format_time(op_end)), 4)
         end
     end)
@@ -105,10 +105,10 @@ mp.observe_property("time-pos", "number", function(_, time_pos)
         if auto_skip_op and not op_skipped then
             op_skipped = true
             mp.commandv("seek", op_end, "absolute", "exact")
-            mp.osd_message(string.format("⏩ Opening saltado automáticamente (hasta %s) [TAB para volver]", format_time(op_end)), 3)
+            mp.osd_message(string.format(">> Opening saltado automaticamente (hasta %s) [TAB para volver]", format_time(op_end)), 3)
         elseif not auto_skip_op and not notified_op then
             notified_op = true
-            mp.osd_message(string.format("🎵 Opening detectado [%s - %s]  ➔  Presiona [TAB] para saltar", 
+            mp.osd_message(string.format(":: Opening detectado [%s - %s] -> Presiona [TAB] para saltar", 
                 format_time(op_start), format_time(op_end)), 4)
         end
     else
@@ -119,7 +119,7 @@ mp.observe_property("time-pos", "number", function(_, time_pos)
     if ed_start and ed_end and time_pos >= ed_start and time_pos < ed_end then
         if not notified_ed then
             notified_ed = true
-            mp.osd_message(string.format("🎵 Ending detectado [%s]  ➔  Presiona [TAB] para saltar o [Shift+N] siguiente", 
+            mp.osd_message(string.format(":: Ending detectado [%s] -> Presiona [TAB] para saltar o [Shift+N] siguiente", 
                 format_time(ed_start)), 4)
         end
     else
@@ -135,7 +135,7 @@ mp.add_key_binding("TAB", "aniskip-jump", function()
     if op_skipped and op_start and math.abs(time_pos - op_end) < 5 then
         op_skipped = false
         mp.commandv("seek", op_start, "absolute", "exact")
-        mp.osd_message("⏪ Regresando al Opening", 2)
+        mp.osd_message("<< Regresando al Opening", 2)
         return
     end
 
@@ -143,25 +143,25 @@ mp.add_key_binding("TAB", "aniskip-jump", function()
     if op_start and op_end and time_pos >= (op_start - 3) and time_pos < op_end then
         op_skipped = true
         mp.commandv("seek", op_end, "absolute", "exact")
-        mp.osd_message(string.format("⏩ Opening saltado (hasta %s)", format_time(op_end)), 3)
+        mp.osd_message(string.format(">> Opening saltado (hasta %s)", format_time(op_end)), 3)
         return
     end
 
     -- Si estamos en el rango del Ending
     if ed_start and ed_end and time_pos >= (ed_start - 3) and time_pos < ed_end then
         mp.commandv("seek", ed_end, "absolute", "exact")
-        mp.osd_message(string.format("⏩ Ending saltado (hasta %s)", format_time(ed_end)), 3)
+        mp.osd_message(string.format(">> Ending saltado (hasta %s)", format_time(ed_end)), 3)
         return
     end
 
     -- Fallback si no hay AniSkip para este anime: saltar 85 segundos (duración estándar de un opening)
     mp.commandv("seek", 85, "relative", "exact")
-    mp.osd_message("⏩ Salto de 85s (Opening estándar)", 2)
+    mp.osd_message(">> Salto de 85s (Opening estandar)", 2)
 end)
 
 -- Atajo Ctrl+s: Alternar Auto-Skip
 mp.add_key_binding("ctrl+s", "aniskip-toggle-auto", function()
     auto_skip_op = not auto_skip_op
     local estado = auto_skip_op and "ACTIVADO" or "DESACTIVADO"
-    mp.osd_message("⏩ Auto-Skip de Opening: " .. estado, 3)
+    mp.osd_message(":: Auto-Skip de Opening: " .. estado, 3)
 end)

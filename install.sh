@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ✨ MOKI - Script de Instalación Universal
+# MOKI - Script de Instalacion Universal
 # Compatible con Arch / CachyOS, Debian / Ubuntu, Fedora
 # Soporte de GPU: NVIDIA, AMD Radeon e Intel (Vulkan + VA-API / NVDEC)
 # Autor: makizapa
@@ -30,13 +30,13 @@ echo " | |\/| | | | | ' / | | "
 echo " | |  | | |_| | . \ | | "
 echo " |_|  |_|\___/|_|\_\___|"
 echo -e "${NC}"
-echo -e "${PURPLE}${BOLD} ✨ Instalador Universal de MOKI (Streaming Suite de Terminal)${NC}"
+echo -e "${PURPLE}${BOLD}:: Instalador Universal de MOKI (Streaming Suite de Terminal)${NC}"
 echo -e "${BLUE} Creado por: ${YELLOW}makizapa${NC}\n"
 
 # ------------------------------------------------------------------------------
 # 1. Detección de Distribución y Gestor de Paquetes
 # ------------------------------------------------------------------------------
-echo -e "${YELLOW}🔍 [1/6] Detectando sistema operativo y gestor de paquetes...${NC}"
+echo -e "${YELLOW}:: [1/6] Detectando sistema operativo y gestor de paquetes...${NC}"
 
 PKG_MANAGER=""
 if command -v pacman &>/dev/null; then
@@ -49,13 +49,13 @@ elif command -v dnf &>/dev/null; then
     PKG_MANAGER="dnf"
     echo -e "   ${GREEN}➔ Sistema basado en Fedora / RHEL detectado (dnf)${NC}"
 else
-    echo -e "   ${YELLOW}⚠️  No se reconoció un gestor de paquetes estándar (pacman/apt/dnf). Se asumirá que las dependencias ya están instaladas.${NC}"
+    echo -e "   ${YELLOW}[!] No se reconocio un gestor de paquetes estandar (pacman/apt/dnf). Se asumira que las dependencias ya estan instaladas.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
 # 2. Detección de Tarjeta Gráfica (GPU) y Aceleración por Hardware
 # ------------------------------------------------------------------------------
-echo -e "\n${YELLOW}🎮 [2/6] Detectando GPU y aceleración por hardware...${NC}"
+echo -e "\n${YELLOW}:: [2/6] Detectando GPU y aceleracion por hardware...${NC}"
 
 GPU_VENDOR="generic"
 GPU_INFO=$(lspci 2>/dev/null | grep -Ei "vga|3d|display" || true)
@@ -83,12 +83,12 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Instalación de Dependencias del Sistema
 # ------------------------------------------------------------------------------
-echo -e "\n${YELLOW}📦 [3/6] Verificando e instalando dependencias del sistema...${NC}"
+echo -e "\n${YELLOW}:: [3/6] Verificando e instalando dependencias del sistema...${NC}"
 
 install_deps() {
     case "$PKG_MANAGER" in
         pacman)
-            local packages=(mpv fzf jq python nodejs npm)
+            local packages=(mpv fzf jq python nodejs npm playerctl)
             if [ "$GPU_VENDOR" == "nvidia" ]; then
                 packages+=(vulkan-icd-loader)
             elif [ "$GPU_VENDOR" == "amd" ]; then
@@ -105,7 +105,7 @@ install_deps() {
             fi
             ;;
         apt)
-            local packages=(mpv fzf jq python3 nodejs npm curl)
+            local packages=(mpv fzf jq python3 nodejs npm curl playerctl)
             if [ "$GPU_VENDOR" == "amd" ] || [ "$GPU_VENDOR" == "intel" ]; then
                 packages+=(mesa-vulkan-drivers va-driver-all)
             elif [ "$GPU_VENDOR" == "nvidia" ]; then
@@ -122,7 +122,7 @@ install_deps() {
             fi
             ;;
         dnf)
-            local packages=(mpv fzf jq python3 nodejs npm)
+            local packages=(mpv fzf jq python3 nodejs npm playerctl)
             echo -e "   ${CYAN}Instalando paquetes requeridos con dnf...${NC}"
             if command -v sudo &>/dev/null; then
                 sudo dnf install -y "${packages[@]}"
@@ -135,7 +135,7 @@ install_deps() {
 
 # Solo intentar instalar paquetes si se detectó un gestor y faltan herramientas
 MISSING_TOOLS=()
-for tool in mpv fzf jq node npm; do
+for tool in mpv fzf jq node npm playerctl; do
     if ! command -v "$tool" &>/dev/null; then
         MISSING_TOOLS+=("$tool")
     fi
@@ -146,7 +146,7 @@ if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
     if [ -n "$PKG_MANAGER" ]; then
         install_deps
     else
-        echo -e "   ${RED}Por favor instala manualmente: mpv, fzf, jq, nodejs, npm${NC}"
+        echo -e "   ${RED}Por favor instala manualmente: mpv, fzf, jq, nodejs, npm, playerctl${NC}"
     fi
 else
     echo -e "   ${GREEN}✓ Todas las dependencias principales ya están instaladas.${NC}"
@@ -174,7 +174,7 @@ fi
 # ------------------------------------------------------------------------------
 # 4. Instalación de Comandos y Scripts (~/.local/bin)
 # ------------------------------------------------------------------------------
-echo -e "\n${YELLOW}🚀 [4/6] Instalando ejecutables de MOKI en ~/.local/bin...${NC}"
+echo -e "\n${YELLOW}:: [4/6] Instalando ejecutables de MOKI en ~/.local/bin...${NC}"
 
 mkdir -p "$TARGET_BIN"
 mkdir -p "$TARGET_DATA"
@@ -196,7 +196,7 @@ echo -e "   ${GREEN}✓ Comandos instalados: moki, anime, serie, pelis, latino, 
 # ------------------------------------------------------------------------------
 # 5. Configuración Universal de MPV y Shaders Anime4K
 # ------------------------------------------------------------------------------
-echo -e "\n${YELLOW}🎬 [5/6] Configurando mpv, scripts Lua y shaders para tu GPU (${GPU_VENDOR^^})...${NC}"
+echo -e "\n${YELLOW}:: [5/6] Configurando mpv, scripts Lua, plugins y shaders para tu GPU (${GPU_VENDOR^^})...${NC}"
 
 mkdir -p "$TARGET_MPV/scripts"
 mkdir -p "$TARGET_MPV/shaders"
@@ -204,11 +204,12 @@ mkdir -p "$TARGET_MPV/shaders"
 # Backup de configuración anterior si existe
 if [ -f "$TARGET_MPV/mpv.conf" ] && [ ! -f "$TARGET_MPV/mpv.conf.moki_backup" ]; then
     cp "$TARGET_MPV/mpv.conf" "$TARGET_MPV/mpv.conf.moki_backup"
-    echo -e "   ${BLUE}ℹ️  Se respaldó tu mpv.conf anterior en mpv.conf.moki_backup${NC}"
+    echo -e "   ${BLUE}:: Se respaldo tu mpv.conf anterior en mpv.conf.moki_backup${NC}"
 fi
 
-# Copiar scripts Lua y atajos de teclado
+# Copiar scripts Lua, plugins nativos (mpris.so) y atajos de teclado
 cp -r "$SCRIPT_DIR/mpv/scripts/"* "$TARGET_MPV/scripts/"
+chmod +x "$TARGET_MPV/scripts/"* 2>/dev/null || true
 cp "$SCRIPT_DIR/mpv/input.conf" "$TARGET_MPV/input.conf"
 
 # Copiar shaders Anime4K si existen en el repo
@@ -224,7 +225,7 @@ fi
 # Generar mpv.conf optimizado para la GPU detectada
 cat <<EOF > "$TARGET_MPV/mpv.conf"
 # ==========================================
-# ✨ MOKI - Configuración Óptima de MPV
+# MOKI - Configuracion Optima de MPV
 # Generado automáticamente para GPU: ${GPU_VENDOR^^}
 # ==========================================
 
@@ -268,14 +269,15 @@ referrer="https://flaswish.com/"
 
 # Servidor IPC para sincronización acústica en tiempo real
 input-ipc-server=/tmp/mpv-socket
+keep-open=yes
 EOF
 
-echo -e "   ${GREEN}✓ mpv.conf, input.conf y 5 scripts Lua instalados.${NC}"
+echo -e "   ${GREEN}✓ mpv.conf, input.conf, scripts Lua y plugin MPRIS instalados.${NC}"
 
 # ------------------------------------------------------------------------------
 # 6. Verificación de la variable PATH
 # ------------------------------------------------------------------------------
-echo -e "\n${YELLOW}🧭 [6/6] Verificando acceso en tu terminal ($PATH)...${NC}"
+echo -e "\n${YELLOW}:: [6/6] Verificando acceso en tu terminal ($PATH)...${NC}"
 
 add_to_shell_rc() {
     local rc_file="$1"
@@ -299,7 +301,7 @@ fi
 # Resumen Final
 # ------------------------------------------------------------------------------
 echo -e "\n${GREEN}${BOLD}══════════════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}${BOLD}  🎉 ¡INSTALACIÓN DE MOKI COMPLETADA CON ÉXITO!               ${NC}"
+echo -e "${GREEN}${BOLD}  :: INSTALACION DE MOKI COMPLETADA CON EXITO                 ${NC}"
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}Comandos listos para usar en tu terminal:${NC}"
 echo -e "  • ${YELLOW}moki${NC}                 ➔ Menú interactivo con todo integrado"

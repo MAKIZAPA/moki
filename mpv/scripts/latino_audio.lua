@@ -91,7 +91,7 @@ local function show_delay_osd(saved)
     local delay = mp.get_property_number("audio-delay", 0)
     local prov_tag = current_provider or "Web"
     local label = saved and string.format(" [Guardado para %s]", prov_tag) or " [Alt+z / Alt+x]"
-    mp.osd_message(string.format("⏱️ Sincronía de Audio: %+.3f seg%s", delay, label), 1.8)
+    mp.osd_message(string.format(":: Sincronia de Audio: %+.3f seg%s", delay, label), 1.8)
 end
 
 -- Cálculo y detección inteligente de sincronía por serie y distribuidora
@@ -187,7 +187,7 @@ end
 local function delay_reset()
     mp.set_property_number("audio-delay", 0.0)
     save_sync_offset(get_clean_media_title(), 0.0, current_provider)
-    mp.osd_message(string.format("⏱️ Sincronía reseteada: 0.000 seg [Guardado para %s]", current_provider), 1.8)
+    mp.osd_message(string.format(":: Sincronia reseteada: 0.000 seg [Guardado para %s]", current_provider), 1.8)
 end
 
 -- Inyectar y aplicar sincronía
@@ -208,9 +208,9 @@ local function inject_stream_data(data, title, is_auto)
     local smart_delay, label = calculate_smart_delay(title, prov)
     mp.set_property_number("audio-delay", smart_delay)
     if smart_delay ~= 0.0 then
-        mp.osd_message(string.format("🎙️ ¡Audio Latino conectado!\n⏱️ Sincronía automática: %+.3fs [%s]", smart_delay, label), 4.5)
+        mp.osd_message(string.format(":: Audio Latino conectado\n-> Sincronia automatica: %+.3fs [%s]", smart_delay, label), 4.5)
     else
-        mp.osd_message(string.format("🎙️ ¡Audio Latino conectado!\n⏱️ Sincronía perfecta: 0.000s [%s]", label), 4.0)
+        mp.osd_message(string.format(":: Audio Latino conectado\n-> Sincronia perfecta: 0.000s [%s]", label), 4.0)
     end
 
     -- Iniciar alineador acústico en segundo plano para calibración fina matemática (FFT)
@@ -234,13 +234,13 @@ local function fetch_and_inject_latino_audio()
     end
 
     if is_fetching then
-        mp.osd_message("⏳ Ya se está conectando la pista de Audio Latino...", 2)
+        mp.osd_message(":: Conectando pista de Audio Latino...", 2)
         return
     end
 
     local title = get_clean_media_title()
     if not title or title == "" then
-        mp.osd_message("⚠️ No se pudo determinar el título para buscar audio latino.", 3)
+        mp.osd_message("[!] No se pudo determinar el titulo para buscar audio latino.", 3)
         return
     end
 
@@ -252,7 +252,7 @@ local function fetch_and_inject_latino_audio()
     end
 
     is_fetching = true
-    mp.osd_message(string.format("🎙️ Conectando Audio Latino Web para:\n%s...", title), 4)
+    mp.osd_message(string.format(":: Conectando Audio Latino Web para:\n%s...", title), 4)
 
     mp.command_native_async({
         name = "subprocess",
@@ -264,14 +264,14 @@ local function fetch_and_inject_latino_audio()
         is_fetching = false
 
         if not success or not res or not res.stdout or res.stdout == "" then
-            mp.osd_message("⚠️ Error al conectar con el resolver de audio latino.", 4)
+            mp.osd_message("[!] Error al conectar con el resolver de audio latino.", 4)
             return
         end
 
         local ok, data = pcall(function() return utils.parse_json(res.stdout) end)
         if not ok or not data or data.status ~= "success" or not (data.stream_url or data.audio_file) then
             local msg = (data and data.message) or "No disponible en catálogos web"
-            mp.osd_message(string.format("❌ Audio Latino no encontrado:\n%s", msg), 4)
+            mp.osd_message(string.format("[-] Audio Latino no encontrado:\n%s", msg), 4)
             return
         end
 
@@ -321,7 +321,7 @@ mp.register_event("file-loaded", function()
     end
 
     -- Si aún no está listo, mostrar OSD discreto de conexión y chequear prefetch
-    mp.osd_message("🎙️ Conectando Audio Latino Web en segundo plano...", 3.0)
+    mp.osd_message(":: Conectando Audio Latino Web en segundo plano...", 3.0)
 
     local check_attempts = 0
     prefetch_timer = mp.add_periodic_timer(0.6, function()

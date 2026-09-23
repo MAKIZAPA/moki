@@ -47,9 +47,25 @@ local function write_json(path, data)
     return true
 end
 
--- Reanudar en el segundo guardado al abrir el video
+-- Reanudar en el segundo guardado al abrir el video y fijar titulo limpio para MPRIS
 mp.register_event("file-loaded", function()
     local media = read_json(MEDIA_FILE)
+    if media and media.title and media.title ~= "" then
+        local display_title = media.title
+        local ep = tonumber(media.episode_num) or tonumber(media.episode)
+        local season = tonumber(media.season)
+        if ep then
+            if season and season > 1 then
+                display_title = string.format("%s - T%02dE%02d", media.title, season, ep)
+            else
+                display_title = string.format("%s - Episodio %s", media.title, tostring(ep))
+            end
+        elseif media.episode and tostring(media.episode) ~= "" then
+            display_title = string.format("%s - %s", media.title, tostring(media.episode))
+        end
+        mp.set_property("force-media-title", display_title)
+    end
+
     if not media then return end
 
     local st = tonumber(media.start_time)
@@ -59,7 +75,7 @@ mp.register_event("file-loaded", function()
             mp.commandv("seek", st, "absolute", "exact")
             local m = math.floor(st / 60)
             local s = math.floor(st % 60)
-            mp.osd_message(string.format("⏩ Reanudando en %02d:%02d", m, s), 4)
+            mp.osd_message(string.format(":: Reanudando en %02d:%02d", m, s), 4)
         end)
     end
 end)
