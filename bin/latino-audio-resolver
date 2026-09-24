@@ -64,32 +64,32 @@ def resolve_audio(title, season=1, episode=1, is_series=True):
     clean_t = clean_anime_romaji(title)
 
     # 1. Búsqueda con título original
-    log(f"🔎 [Latino-Resolver] Buscando en fuentes web: '{clean_t}'...")
+    log(f":: [latino-resolver] Buscando en fuentes web: '{clean_t}'...")
     results = ls_mod.search_all_sources(session, clean_t)
     matching = [r for r in results if r.get("is_series", False) == is_series and ls_mod.is_title_match(clean_t, r["title"])]
 
-    # 2. Si no hubo coincidencia, intentar traduciendo al español (ej. 'A Love Other Than Yours' ➔ 'Un amor distinto al tuyo')
+    # 2. Si no hubo coincidencia, intentar traduciendo al español (ej. 'A Love Other Than Yours' -> 'Un amor distinto al tuyo')
     es_title = None
     if not matching:
         es_title = translate_to_spanish(clean_t)
         if es_title and es_title.lower() != clean_t.lower():
-            log(f"🌐 [Latino-Resolver] Probando traducción al español: '{es_title}'...")
+            log(f":: [latino-resolver] Probando traduccion al espanol: '{es_title}'...")
             es_results = ls_mod.search_all_sources(session, es_title)
             matching = [r for r in es_results if r.get("is_series", False) == is_series and ls_mod.is_title_match(es_title, r["title"])]
             results = es_results
 
     if not matching:
-        log(f"❌ [Latino-Resolver] No se encontró versión en streaming para '{title}'")
+        log(f"[-] [latino-resolver] No se encontro version en streaming para '{title}'")
         return None
 
     chosen_item = matching[0]
-    log(f"✓ [Latino-Resolver] Título encontrado: '{chosen_item['title']}' [{chosen_item['provider_label']}]")
+    log(f"[+] [latino-resolver] Titulo encontrado: '{chosen_item['title']}' [{chosen_item['provider_label']}]")
 
     target_ep_info = None
     if is_series:
         episodes = ls_mod.get_episodes_for_item(session, chosen_item)
         if not episodes:
-            log("❌ [Latino-Resolver] No se pudieron cargar los episodios.")
+            log("[-] [latino-resolver] No se pudieron cargar los episodios.")
             return None
 
         # Coincidencia por temporada y capítulo
@@ -106,16 +106,16 @@ def resolve_audio(title, season=1, episode=1, is_series=True):
                     break
 
         if not target_ep_info:
-            log(f"❌ [Latino-Resolver] No se encontró el capítulo T{season:02d}E{episode:02d}.")
+            log(f"[-] [latino-resolver] No se encontro el capitulo T{season:02d}E{episode:02d}.")
             return None
 
-    log(f"▶ [Latino-Resolver] Extrayendo flujo de audio/stream...")
+    log(f"-> [latino-resolver] Extrayendo flujo de audio/stream...")
     stream_url, referer, lang = ls_mod.extract_stream_with_fallback(
         session, chosen_item, target_ep_info, results, user_query=es_title or clean_t
     )
 
     if not stream_url:
-        log("❌ [Latino-Resolver] Falló la extracción en todos los servidores.")
+        log("[-] [latino-resolver] Fallo la extraccion en todos los servidores.")
         return None
 
     # Optimización de ancho de banda y latencia: si es HLS multiplexado,
@@ -126,13 +126,18 @@ def resolve_audio(title, season=1, episode=1, is_series=True):
     elif "index-f2-" in audio_stream_url:
         audio_stream_url = audio_stream_url.replace("index-f2-", "index-f1-")
 
+    actual_provider = chosen_item["provider_label"]
+    m_prov = re.search(r"\(([A-Z0-9]+)\)", lang or "")
+    if m_prov:
+        actual_provider = m_prov.group(1)
+
     return {
         "status": "success",
         "stream_url": audio_stream_url,
         "raw_stream_url": stream_url,
         "referer": referer or "https://flaswish.com/",
         "title": chosen_item["title"],
-        "provider": chosen_item["provider_label"],
+        "provider": actual_provider,
         "lang": lang or "LATINO",
         "season": season,
         "episode": episode

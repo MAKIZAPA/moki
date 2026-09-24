@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import difflib
 import unicodedata
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -57,7 +58,7 @@ def is_title_match(title1: str, title2: str, threshold: float = 0.75) -> bool:
     ratio = difflib.SequenceMatcher(None, norm1, norm2).ratio()
     return ratio >= threshold
 
-def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
+def select_with_fzf(items_text, prompt=":: Seleccionar: ", header=""):
     if not shutil.which("fzf") or not sys.stdin.isatty():
         return None, False
     try:
@@ -141,28 +142,38 @@ def unpack_js_node(packed_str: str) -> str:
 def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""):
     if not embed_url:
         return None, None
+
+    candidates = []
+    if embed_url.startswith("http"):
+        candidates.append(embed_url)
+
     code = embed_url.rstrip("/").split("/")[-1]
-    candidates = [
-        f"https://flaswish.com/e/{code}",
-        f"https://streamwish.to/e/{code}",
+    mirrors = [
         f"https://vidhidepro.com/v/{code}",
+        f"https://streamwish.to/e/{code}",
+        f"https://flaswish.com/e/{code}",
         f"https://filelions.to/v/{code}",
         f"https://smoothpre.com/v/{code}"
     ]
-    # Si embed_url ya era una url completa válida
-    if embed_url.startswith("http") and embed_url not in candidates:
-        candidates.insert(0, embed_url)
+    for m in mirrors:
+        if m not in candidates:
+            candidates.append(m)
 
     ref = custom_referer if custom_referer else "https://flixlatam.com/"
-    headers = {
-        "Referer": ref,
-        "User-Agent": USER_AGENT
-    }
 
     for cand in candidates:
         try:
-            r = session.get(cand, headers=headers, timeout=6)
+            cand_host = urllib.parse.urlparse(cand).netloc
+            cand_origin = f"https://{cand_host}"
+            cand_ref = f"{cand_origin}/"
+            headers = {
+                "Referer": ref if ref else cand_ref,
+                "User-Agent": USER_AGENT
+            }
+            r = session.get(cand, headers=headers, timeout=5)
             if r.status_code == 200:
+                if "File is no longer available" in r.text or "expired or has been deleted" in r.text:
+                    continue
                 if "eval(function(p,a,c,k,e,d)" in r.text:
                     unpacked = unpack_js_node(r.text)
                     m3u8s = re.findall(r"https?://[^\s\"\'<>]+\.m3u8[^\s\"\'<>]*", unpacked)
@@ -171,23 +182,58 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
                         try:
                             r_m = session.get(
                                 master_url,
-                                headers={"Referer": "https://flaswish.com/", "Origin": "https://flaswish.com", "User-Agent": USER_AGENT},
-                                timeout=4
+                                headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
+                                timeout=3.5
                             )
-                            if r_m.status_code == 200 and "#EXT-X-STREAM-INF" in r_m.text:
-                                base_m = master_url[:master_url.rfind("/") + 1]
-                                sub_lines = [l.strip() for l in r_m.text.splitlines() if l.strip() and not l.startswith("#")]
-                                if sub_lines:
-                                    best_sub = sub_lines[-1]
-                                    sub_url = best_sub if best_sub.startswith("http") else base_m + best_sub
-                                    return sub_url, "https://flaswish.com/"
+                            if r_m.status_code == 200:
+                                if "#EXT-X-STREAM-INF" in r_m.text:
+                                    base_m = master_url[:master_url.rfind("/") + 1]
+                                    sub_lines = [l.strip() for l in r_m.text.splitlines() if l.strip() and not l.startswith("#")]
+                                    if sub_lines:
+                                        # Priorizar variante de menor ancho de banda para audio ultra rápido
+                                        best_sub = sub_lines[0]
+                                        sub_url = best_sub if best_sub.startswith("http") else base_m + best_sub
+                                        try:
+                                            r_sub = session.get(
+                                                sub_url,
+                                                headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
+                                                timeout=3.0
+                                            )
+                                            if r_sub.status_code == 200 and ("#EXTINF" in r_sub.text or "#EXT-X-TARGETDURATION" in r_sub.text):
+                                                return sub_url, cand_ref
+                                        except Exception:
+                                            pass
+                                        if len(sub_lines) > 1:
+                                            alt_sub = sub_lines[-1]
+                                            alt_url = alt_sub if alt_sub.startswith("http") else base_m + alt_sub
+                                            try:
+                                                r_alt = session.get(
+                                                    alt_url,
+                                                    headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
+                                                    timeout=3.0
+                                                )
+                                                if r_alt.status_code == 200 and ("#EXTINF" in r_alt.text or "#EXT-X-TARGETDURATION" in r_alt.text):
+                                                    return alt_url, cand_ref
+                                            except Exception:
+                                                pass
+                                elif "#EXTINF" in r_m.text or "#EXT-X-TARGETDURATION" in r_m.text:
+                                    return master_url, cand_ref
                         except Exception:
                             pass
-                        return master_url, "https://flaswish.com/"
 
                 direct_m3u8 = re.findall(r"https?://[^\s\"\'<>]+\.m3u8[^\s\"\'<>]*", r.text)
                 if direct_m3u8:
-                    return direct_m3u8[0], cand
+                    d_url = direct_m3u8[0]
+                    try:
+                        r_d = session.get(
+                            d_url,
+                            headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
+                            timeout=3.0
+                        )
+                        if r_d.status_code == 200 and ("#EXTINF" in r_d.text or "#EXT-X-TARGETDURATION" in r_d.text or "#EXT-X-STREAM-INF" in r_d.text):
+                            return d_url, cand_ref
+                    except Exception:
+                        pass
         except Exception:
             continue
 
@@ -638,7 +684,7 @@ def extract_stream_with_fallback(session, chosen_item: dict, chosen_ep_info: dic
     # Intento 1: Proveedor seleccionado
     st_url, ref, lang = extract_stream_direct(session, primary_prov, target_url)
     if st_url:
-        return st_url, ref, lang
+        return st_url, ref, f"{lang} ({primary_label})" if f"({primary_label})" not in str(lang) else lang
 
     # Si falló, intentar fallback automático
     log(f"\n{YELLOW}:: [AVISO] Servidor no respondió en {primary_label}.{NC}")

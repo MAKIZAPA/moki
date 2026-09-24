@@ -44,6 +44,22 @@ local function write_json(path, data)
     return true
 end
 
+local function is_ready_for_media(ready_data)
+    if not ready_data or ready_data.status ~= "success" or not (ready_data.stream_url or ready_data.audio_file) then
+        return false
+    end
+    local media = read_json(MEDIA_FILE)
+    if media then
+        if media.season and ready_data.season and tonumber(media.season) ~= tonumber(ready_data.season) then
+            return false
+        end
+        if media.episode_num and ready_data.episode and tonumber(media.episode_num) ~= tonumber(ready_data.episode) then
+            return false
+        end
+    end
+    return true
+end
+
 local function get_clean_media_title()
     local media = read_json(MEDIA_FILE)
     if media and media.title and media.title ~= "" then
@@ -201,8 +217,41 @@ local function inject_stream_data(data, title, is_auto)
     local mode = data.audio_file and "RAM" or "Web"
     local track_title = string.format("Español Latino (%s • %s)", mode, prov)
 
-    mp.commandv("audio-add", target, "select", track_title, "spa")
+    -- Preservar el id de video original para evitar que streams HLS externos alteren la pista de video
+    local cur_vid = mp.get_property("vid")
+
+    local res, err = mp.command_native({
+        name = "audio-add",
+        url = target,
+        flags = "select",
+        title = track_title,
+        lang = "spa"
+    })
+
+    if err then
+        pcall(function() os.remove(READY_FILE) end)
+        latino_injected = false
+        mp.osd_message(string.format("[!] Error al conectar pista de audio (%s)", tostring(err)), 4.0)
+        return
+    end
+
     latino_injected = true
+
+    -- Restaurar video original si el stream multiplexado intentó cambiar de video
+    if cur_vid and cur_vid ~= "no" then
+        mp.set_property("vid", cur_vid)
+    end
+
+    -- Asegurar explícitamente la selección de la pista de audio inyectada
+    local track_list = mp.get_property_native("track-list") or {}
+    for _, t in ipairs(track_list) do
+        if t.type == "audio" and (t.external or (t.title and t.title:find("Español Latino"))) then
+            if not t.selected then
+                mp.set_property("aid", tostring(t.id))
+            end
+            break
+        end
+    end
 
     -- Aplicar sincronía automática inteligente por proveedor
     local smart_delay, label = calculate_smart_delay(title, prov)
@@ -230,6 +279,13 @@ end
 local function fetch_and_inject_latino_audio()
     if latino_injected then
         mp.commandv("cycle", "audio")
+        mp.add_timeout(0.15, function()
+            local aid = mp.get_property("aid") or "1"
+            local lang = mp.get_property("current-tracks/audio/lang") or ""
+            local trk_title = mp.get_property("current-tracks/audio/title") or ""
+            local display_name = trk_title ~= "" and trk_title or (lang ~= "" and lang or ("Pista " .. aid))
+            mp.osd_message(string.format(":: Pista de audio activa: %s [Pista %s]", display_name, aid), 2.5)
+        end)
         return
     end
 
@@ -244,9 +300,9 @@ local function fetch_and_inject_latino_audio()
         return
     end
 
-    -- Si ya estaba pre-cargado en disco/RAM
+    -- Si ya estaba pre-cargado en disco/RAM y corresponde al medio actual
     local ready = read_json(READY_FILE)
-    if ready and ready.status == "success" and (ready.stream_url or ready.audio_file) then
+    if is_ready_for_media(ready) then
         inject_stream_data(ready, title, false)
         return
     end
@@ -313,7 +369,7 @@ mp.register_event("file-loaded", function()
 
     -- Comprobar si ya existe pre-carga lista de audio
     local ready = read_json(READY_FILE)
-    if ready and ready.status == "success" and (ready.stream_url or ready.audio_file) then
+    if is_ready_for_media(ready) then
         mp.add_timeout(0.5, function()
             inject_stream_data(ready, title, true)
         end)
@@ -332,7 +388,7 @@ mp.register_event("file-loaded", function()
         end
 
         local r = read_json(READY_FILE)
-        if r and r.status == "success" and (r.stream_url or r.audio_file) then
+        if is_ready_for_media(r) then
             if prefetch_timer then prefetch_timer:kill(); prefetch_timer = nil end
             inject_stream_data(r, title, true)
             return
