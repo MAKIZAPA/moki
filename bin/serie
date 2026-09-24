@@ -18,7 +18,7 @@ VOICE_SCRIPT="$HOME/.local/bin/anime-voice"
 cleanup() {
     rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/current_media.json /tmp/latino_stream_ready.json /tmp/latino_audio.aac "$HOME/.cache/webtorrent" 2>/dev/null
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP QUIT
 
 # Función para reproducir enlace
 play_stream() {

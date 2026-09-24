@@ -412,6 +412,20 @@ mp.register_event("end-file", function()
     end
 end)
 
+-- Limpieza garantizada al cerrar el reproductor (libera la RAM inmediatamente)
+mp.register_event("shutdown", function()
+    local marathon_next = "/tmp/marathon_next.json"
+    local f = io.open(marathon_next, "r")
+    if f then
+        f:close()
+        return
+    end
+    pcall(function()
+        os.remove(READY_FILE)
+        os.execute("rm -rf /tmp/webtorrent* /tmp/torrent-stream* /tmp/latino_audio.aac 2>/dev/null")
+    end)
+end)
+
 -- Registrar bindings de script
 mp.add_key_binding("l", "toggle_latino_audio", fetch_and_inject_latino_audio)
 mp.add_key_binding("L", "toggle_latino_audio_upper", fetch_and_inject_latino_audio)
