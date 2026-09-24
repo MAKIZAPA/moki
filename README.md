@@ -12,6 +12,7 @@
     <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
     <img src="https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white" alt="Bash" />
     <img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" />
+    <img src="https://img.shields.io/badge/MPRIS-D--Bus-7c3aed?style=for-the-badge" alt="MPRIS" />
     <img src="https://img.shields.io/badge/NVIDIA-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="NVIDIA" />
     <img src="https://img.shields.io/badge/AMD-ED1C24?style=for-the-badge&logo=amd&logoColor=white" alt="AMD" />
     <img src="https://img.shields.io/badge/Intel-0071C5?style=for-the-badge&logo=intel&logoColor=white" alt="Intel" />
@@ -66,8 +67,8 @@
   <tr>
     <td width="50%">
       <img src="https://img.shields.io/badge/AUTONOMOUS-FANSUB_CHAIN-e11d48?style=flat-square" alt="Fansub" /><br/>
-      <b>Modo Maratón & Fansub Memory</b><br/>
-      Memoriza tu grupo de release preferido (ej. <code>VARYG</code>, <code>Erai-raws</code>, <code>AnoZu</code>) y encadena los capítulos automáticamente preservando temporada, fuente y calidad sin prompts manuales.
+      <b>Modo Maratón & Encoder Memory</b><br/>
+      Memoriza tu grupo de release preferido (ej. <code>VARYG</code>, <code>FLUX</code>, <code>PSA</code>, <code>AnoZu</code>) y encadena los capítulos automáticamente en Anime y Series preservando temporada, fuente y calidad sin interrupciones ni prompts.
     </td>
     <td width="50%">
       <img src="https://img.shields.io/badge/HARDWARE-MULTI--GPU_ACCEL-00f0ff?style=flat-square" alt="GPU" /><br/>
@@ -83,8 +84,8 @@
     </td>
     <td width="50%">
       <img src="https://img.shields.io/badge/RESUME-SMART_HISTORY-1e40af?style=flat-square" alt="Historial" /><br/>
-      <b>Historial Unificado & Discord RPC</b><br/>
-      Reanudación en el segundo exacto para todo el catálogo (Anime, Series, Películas y Streams Web) mediante <code>moki continuar</code>, con purga ágil de registros y presencia enriquecida en Discord.
+      <b>Historial Unificado, MPRIS & Discord RPC</b><br/>
+      Reanudación en el segundo exacto mediante <code>moki continuar</code>, soporte nativo de MPRIS (D-Bus) para widgets de Hyprland/Waybar y controles multimedia, y presencia enriquecida en Discord.
     </td>
   </tr>
 </table>
