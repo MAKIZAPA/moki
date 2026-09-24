@@ -17,10 +17,23 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 TARGET_BIN="$HOME/.local/bin"
 TARGET_MPV="$HOME/.config/mpv"
 TARGET_DATA="$HOME/.config/streaming-cli"
+
+# Soporte para ejecucion remota directa (curl -fsSL ... | bash o wget)
+if [ -z "$SCRIPT_DIR" ] || [ ! -f "$SCRIPT_DIR/bin/moki" ]; then
+    echo -e "\033[0;36m:: Detectada instalacion remota. Descargando repositorio MOKI...\033[0m"
+    REMOTE_TMP=$(mktemp -d /tmp/moki-installer-XXXXXX)
+    if command -v git &>/dev/null; then
+        git clone --depth 1 https://github.com/MAKIZAPA/moki.git "$REMOTE_TMP" >/dev/null 2>&1
+    else
+        curl -fsSL https://github.com/MAKIZAPA/moki/archive/refs/heads/main.tar.gz | tar -xz -C "$REMOTE_TMP" --strip-components=1
+    fi
+    SCRIPT_DIR="$REMOTE_TMP"
+    trap 'rm -rf "$REMOTE_TMP"' EXIT
+fi
 
 clear 2>/dev/null || true
 echo -e "${CYAN}${BOLD}"
@@ -179,7 +192,7 @@ echo -e "\n${YELLOW}:: [4/6] Instalando ejecutables de MOKI en ~/.local/bin...${
 mkdir -p "$TARGET_BIN"
 mkdir -p "$TARGET_DATA"
 
-cp "$SCRIPT_DIR/bin/"* "$TARGET_BIN/"
+find "$SCRIPT_DIR/bin" -maxdepth 1 -type f -exec cp {} "$TARGET_BIN/" \;
 chmod +x "$TARGET_BIN/moki"
 chmod +x "$TARGET_BIN/anime"*
 chmod +x "$TARGET_BIN/serie"*

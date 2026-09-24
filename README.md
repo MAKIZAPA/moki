@@ -94,6 +94,12 @@
 
 ## Instalación
 
+### Opción 1: Instalación Rápida (1 Línea - Recomendada)
+```bash
+curl -fsSL https://raw.githubusercontent.com/MAKIZAPA/moki/main/install.sh | bash
+```
+
+### Opción 2: Clonando el Repositorio
 ```bash
 # 1. Clonar el repositorio
 git clone https://github.com/MAKIZAPA/moki.git
@@ -102,7 +108,18 @@ git clone https://github.com/MAKIZAPA/moki.git
 cd moki && chmod +x install.sh && ./install.sh
 ```
 
-> **Nota:** El instalador detecta automáticamente tu gestor de paquetes (`pacman`, `apt`, `dnf`), tu arquitectura de GPU y enlaza los binarios en tu `$PATH`.
+### Opción 3: Vía NPM / Bun / PNPM
+```bash
+npm install -g github:MAKIZAPA/moki
+# o con bun:
+bun add -g github:MAKIZAPA/moki
+```
+
+> [!NOTE]
+> En el registro público de npm, el término `moki` a secas pertenece a un paquete abandonado de 2016 ajeno a este proyecto. Si usas npm, debes instalarlo indicando el repositorio: `npm i -g github:MAKIZAPA/moki`.
+
+> [!TIP]
+> El instalador detecta automáticamente tu gestor de paquetes (`pacman`, `apt`, `dnf`), tu arquitectura de GPU (NVIDIA, AMD Radeon, Intel) y enlaza los binarios en tu `$PATH`.
 
 ---
 

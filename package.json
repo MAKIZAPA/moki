@@ -1,0 +1,41 @@
+{
+  "name": "@makizapa/moki",
+  "version": "1.0.0",
+  "description": "La Streaming Suite de Terminal para Linux - Streaming P2P, Web Scraping multi-proveedor, mpv, AniSkip y Anime4K",
+  "main": "bin/moki",
+  "bin": {
+    "moki": "./bin/moki",
+    "anime": "./bin/anime",
+    "serie": "./bin/serie",
+    "pelis": "./bin/serie",
+    "latino": "./bin/latino",
+    "continuar": "./bin/continuar",
+    "limpiar": "./bin/limpiar",
+    "limpiar-ram": "./bin/limpiar-ram"
+  },
+  "scripts": {
+    "postinstall": "bash install.sh || true"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MAKIZAPA/moki.git"
+  },
+  "keywords": [
+    "anime",
+    "streaming",
+    "mpv",
+    "webtorrent",
+    "cli",
+    "terminal",
+    "linux",
+    "latino",
+    "aniskip",
+    "anime4k"
+  ],
+  "author": "makizapa",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/MAKIZAPA/moki/issues"
+  },
+  "homepage": "https://github.com/MAKIZAPA/moki#readme"
+}
