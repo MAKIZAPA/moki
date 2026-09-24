@@ -201,7 +201,7 @@ Esto eliminará los ejecutables de `~/.local/bin/` y restaurará tu configuraci�
 ## Autor & Agradecimientos
 
 - **Desarrollado y mantenido por:** [@makizapa](https://github.com/MAKIZAPA)
-- **Agradecimiento especial:** 💖 *Gracias a mi novia por el nombre (Moki).*
+- **Agradecimiento especial:** *Dedicado a mi novia por inspirar el nombre (Moki).*
 
 ---
 
