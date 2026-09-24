@@ -143,21 +143,25 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
     if not embed_url:
         return None, None
 
+    # Saltar enlaces de descarga directa o servicios conocidos por estar bloqueados
+    if "morencius.com" in embed_url or "/download" in embed_url:
+        return None, None
+
     candidates = []
     if embed_url.startswith("http"):
         candidates.append(embed_url)
 
-    code = embed_url.rstrip("/").split("/")[-1]
-    mirrors = [
-        f"https://vidhidepro.com/v/{code}",
-        f"https://streamwish.to/e/{code}",
-        f"https://flaswish.com/e/{code}",
-        f"https://filelions.to/v/{code}",
-        f"https://smoothpre.com/v/{code}"
-    ]
-    for m in mirrors:
-        if m not in candidates:
-            candidates.append(m)
+    is_wish_or_hide = any(k in embed_url.lower() for k in ["wish", "vidhide", "filelions", "smooth", "hglink"])
+    if is_wish_or_hide:
+        code = embed_url.rstrip("/").split("/")[-1]
+        mirrors = [
+            f"https://vidhidepro.com/v/{code}",
+            f"https://streamwish.to/e/{code}",
+            f"https://flaswish.com/e/{code}"
+        ]
+        for m in mirrors:
+            if m not in candidates:
+                candidates.append(m)
 
     ref = custom_referer if custom_referer else "https://flixlatam.com/"
 
@@ -170,7 +174,7 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
                 "Referer": ref if ref else cand_ref,
                 "User-Agent": USER_AGENT
             }
-            r = session.get(cand, headers=headers, timeout=5)
+            r = session.get(cand, headers=headers, timeout=3.0)
             if r.status_code == 200:
                 if "File is no longer available" in r.text or "expired or has been deleted" in r.text:
                     continue
@@ -183,7 +187,7 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
                             r_m = session.get(
                                 master_url,
                                 headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
-                                timeout=3.5
+                                timeout=2.5
                             )
                             if r_m.status_code == 200:
                                 if "#EXT-X-STREAM-INF" in r_m.text:
@@ -197,7 +201,7 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
                                             r_sub = session.get(
                                                 sub_url,
                                                 headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
-                                                timeout=3.0
+                                                timeout=2.0
                                             )
                                             if r_sub.status_code == 200 and ("#EXTINF" in r_sub.text or "#EXT-X-TARGETDURATION" in r_sub.text):
                                                 return sub_url, cand_ref
@@ -210,7 +214,7 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
                                                 r_alt = session.get(
                                                     alt_url,
                                                     headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
-                                                    timeout=3.0
+                                                    timeout=2.0
                                                 )
                                                 if r_alt.status_code == 200 and ("#EXTINF" in r_alt.text or "#EXT-X-TARGETDURATION" in r_alt.text):
                                                     return alt_url, cand_ref
@@ -228,7 +232,7 @@ def resolve_cyberlocker_stream(session, embed_url: str, custom_referer: str = ""
                         r_d = session.get(
                             d_url,
                             headers={"Referer": cand_ref, "Origin": cand_origin, "User-Agent": USER_AGENT},
-                            timeout=3.0
+                            timeout=2.0
                         )
                         if r_d.status_code == 200 and ("#EXTINF" in r_d.text or "#EXT-X-TARGETDURATION" in r_d.text or "#EXT-X-STREAM-INF" in r_d.text):
                             return d_url, cand_ref
@@ -356,19 +360,16 @@ def extract_stream_flixlatam(session, page_url: str):
 
         key_hex = solve_pow(chal, diff, salt)
 
-        def lang_priority(entry):
-            lang = entry.get("video_language", "").upper()
-            if "LAT" in lang:
-                return 0
-            if "ESP" in lang:
-                return 1
-            return 2
+        # Filtrar estrictamente por Español Latino (LAT).
+        # Si no hay pistas en latino o fallan, terminar de inmediato para activar el respaldo alternativo
+        lat_entries = [e for e in data_list if "LAT" in e.get("video_language", "").upper()]
+        if not lat_entries:
+            return None, None, None
 
-        data_list.sort(key=lang_priority)
-
-        for entry in data_list:
+        for entry in lat_entries:
             lang = entry.get("video_language", "LAT")
-            all_embeds = entry.get("sortedEmbeds", []) + entry.get("downloadEmbeds", [])
+            # ÚNICAMENTE sortedEmbeds (reproductores de video). IGNORAR downloadEmbeds (páginas de descarga directa)
+            all_embeds = entry.get("sortedEmbeds", [])
             enc_links = [item["link"] for item in all_embeds if isinstance(item, dict) and "link" in item]
             if not enc_links:
                 continue
@@ -376,6 +377,9 @@ def extract_stream_flixlatam(session, page_url: str):
             decrypted_urls = decrypt_links_node(key_hex, enc_links)
             for dec_url in decrypted_urls:
                 if not dec_url:
+                    continue
+                # Saltar enlaces no compatibles o bloqueados (descargas, Morencius geo-bloqueado)
+                if "/download" in dec_url or "morencius.com" in dec_url:
                     continue
                 stream_url, ref = resolve_cyberlocker_stream(session, dec_url, custom_referer="https://flixlatam.com/")
                 if stream_url:
@@ -485,23 +489,32 @@ def extract_stream_cuevana3(session, page_url: str):
             return None, None, None
         videos = target.get("videos", {})
 
-        # Probar en orden de prioridad latino -> castellano -> subtitulado / inglés
-        for lang_key in ["latino", "spanish", "english"]:
-            v_list = videos.get(lang_key, [])
-            for v in v_list:
-                p_url = v.get("result")
-                if not p_url:
-                    continue
-                try:
-                    r_p = session.get(p_url, headers={"Referer": "https://cuevana3.eu/"}, timeout=5)
-                    m = re.search(r"var url\s*=\s*'([^']+)'", r_p.text)
-                    if m:
-                        host_url = m.group(1)
-                        st_url, ref = resolve_cyberlocker_stream(session, host_url, custom_referer="https://cuevana3.eu/")
-                        if st_url:
-                            return st_url, ref, lang_key.upper()
-                except Exception:
-                    continue
+        # Probar estrictamente en orden latino con prioridad a servidores rápidos (Vidhide responde en milisegundos)
+        videos_latino = videos.get("latino", [])
+        def server_rank(item):
+            cb = str(item.get("cyberlocker", "")).lower()
+            if "vidhide" in cb:
+                return 0
+            if "streamwish" in cb:
+                return 1
+            return 2
+
+        videos_latino.sort(key=server_rank)
+
+        for v in videos_latino:
+            p_url = v.get("result")
+            if not p_url:
+                continue
+            try:
+                r_p = session.get(p_url, headers={"Referer": "https://cuevana3.eu/"}, timeout=3.0)
+                m = re.search(r"var url\s*=\s*'([^']+)'", r_p.text)
+                if m:
+                    host_url = m.group(1)
+                    st_url, ref = resolve_cyberlocker_stream(session, host_url, custom_referer="https://cuevana3.eu/")
+                    if st_url:
+                        return st_url, ref, "LATINO"
+            except Exception:
+                continue
         return None, None, None
     except Exception:
         return None, None, None
