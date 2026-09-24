@@ -1,6 +1,9 @@
 # ==========================================
-# ✨ MOKI - .gitignore
+# MOKI - .gitignore
 # ==========================================
+
+AGENTS.md
+
 
 # Archivos de respaldo y configuración local
 *.moki_backup
