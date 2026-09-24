@@ -19,7 +19,19 @@ def log(msg="", end="\n"):
     sys.stderr.write(f"{msg}{end}")
     sys.stderr.flush()
 
-def select_with_fzf(items_text, prompt="🔎 Seleccionar: ", header=""):
+def extract_group(title):
+    lines = title.split('\n')
+    t = lines[0].strip()
+    clean_t = re.sub(r'\[(?:rartv|TGx|EZTV|EtHD|eztv)\]$', '', t, flags=re.I).strip()
+    m = re.search(r'-([a-zA-Z0-9_]+)(?:\.[a-zA-Z0-9]+)?(?:\s*\[.*\])?$', clean_t)
+    if m:
+        return m.group(1)
+    m = re.search(r'^\[([a-zA-Z0-9_\-!]+)\]', t)
+    if m:
+        return m.group(1)
+    return ""
+
+def select_with_fzf(items_text, prompt=":: Seleccionar: ", header=""):
     import shutil
     import subprocess
     if not shutil.which("fzf"):
@@ -252,68 +264,99 @@ def parse_stream_info(stream):
     }
 
 def main():
-    raw_input_text = ""
-    season_arg = None
-    episode_arg = None
+    import argparse
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--imdb', type=str, default=None)
+    parser.add_argument('--title', type=str, default=None)
+    parser.add_argument('--season', type=int, default=None)
+    parser.add_argument('--episode', type=int, default=None)
+    parser.add_argument('--group', type=str, default=None)
+    parser.add_argument('--res', type=str, default=None)
+    parser.add_argument('--latino', type=int, default=None)
+    parser.add_argument('--lang-score', type=int, default=None)
+    parser.add_argument('--marathon', action='store_true', default=False)
 
-    if len(sys.argv) > 1:
-        # Detectar si pasaron: serie "The Last of Us" 1 2 o serie "Dune"
-        args = sys.argv[1:]
-        if len(args) >= 3 and args[-2].isdigit() and args[-1].isdigit():
-            season_arg = int(args[-2])
-            episode_arg = int(args[-1])
-            raw_input_text = " ".join(args[:-2])
+    args_opt, remaining = parser.parse_known_args(sys.argv[1:])
+    season_arg = args_opt.season
+    episode_arg = args_opt.episode
+    raw_input_text = args_opt.title or ""
+
+    if remaining:
+        if len(remaining) >= 3 and remaining[-2].isdigit() and remaining[-1].isdigit():
+            if season_arg is None: season_arg = int(remaining[-2])
+            if episode_arg is None: episode_arg = int(remaining[-1])
+            if not raw_input_text: raw_input_text = " ".join(remaining[:-2])
+        elif len(remaining) == 2 and remaining[0].isdigit() and remaining[1].isdigit():
+            if season_arg is None: season_arg = int(remaining[0])
+            if episode_arg is None: episode_arg = int(remaining[1])
         else:
-            raw_input_text = " ".join(args)
+            if not raw_input_text: raw_input_text = " ".join(remaining)
 
-    if not raw_input_text:
-        log("\033[1;33m🔍 Nombre de la serie o película: \033[0m", end="")
-        raw_input_text = sys.stdin.readline().strip()
+    raw_input_text = raw_input_text.strip(" '\"")
 
-    if not raw_input_text:
-        log("\033[0;31mNo se ingresó ningún nombre.\033[0m")
-        sys.exit(1)
+    media_type = "series"
+    imdb_id = None
+    media_name = ""
+    poster = ""
 
-    log(f"\n\033[0;36m🔎 Buscando '{raw_input_text}' en catálogo verificado...\033[0m")
-    items = search_cinemeta(raw_input_text)
+    if args_opt.imdb:
+        imdb_id = args_opt.imdb
+        media_name = raw_input_text or "Serie"
+        media_type = "series"
+    else:
+        if not raw_input_text:
+            log(":: Nombre de la serie o película: ", end="")
+            raw_input_text = sys.stdin.readline().strip().strip(" '\"")
 
-    if not items:
-        log(f"\033[0;31mNo se encontraron series ni películas para '{raw_input_text}'.\033[0m")
-        sys.exit(1)
+        if not raw_input_text:
+            log("[-] No se ingresó ningún nombre.")
+            sys.exit(1)
 
-    # Si hay múltiples resultados, mostrar lista con fzf o fallback
-    selected_media = items[0]
-    if len(items) > 1:
-        fzf_titles = []
-        for i, it in enumerate(items, 1):
-            type_icon = "📺 Serie" if it["type"] == "series" else "🎬 Película"
-            year_str = f" \033[1;33m({it['year']})\033[0m" if it["year"] else ""
-            net_str = f" \033[1;35m[{it['network']}]\033[0m" if it["network"] else ""
-            fzf_titles.append(f"\033[1;36m[{i}]\033[0m \033[1;37m{it['name']}\033[0m{year_str}{net_str}  \033[0;36m[{type_icon}]\033[0m")
+        log(f"\n\033[0;36m:: Buscando '{raw_input_text}' en catálogo verificado...\033[0m")
+        items = search_cinemeta(raw_input_text)
 
-        c_idx, used_fzf = select_with_fzf(
-            fzf_titles,
-            prompt="🔎 Elegir título: ",
-            header="Múltiples coincidencias | ↑↓ Navega | Escribe para filtrar | Enter = Seleccionar | Esc = Salir"
-        )
-        if used_fzf:
-            if c_idx is None:
-                sys.exit(0)
-            selected_media = items[c_idx]
-        else:
-            log("\n\033[1;32m══════════════════════════════════════════════════════════════╗\033[0m")
-            log("\033[1;37m Títulos encontrados:                                         ║\033[0m")
-            log("\033[1;32m══════════════════════════════════════════════════════════════╝\033[0m")
-            for t_line in fzf_titles:
-                log(f"  {t_line}")
-            log("\n\033[1;33mSelecciona el título [1]: \033[0m", end="")
-            choice = sys.stdin.readline().strip()
-            if choice.isdigit() and 1 <= int(choice) <= len(items):
-                selected_media = items[int(choice) - 1]
+        if not items:
+            log(f"\033[0;31mNo se encontraron series ni películas para '{raw_input_text}'.\033[0m")
+            sys.exit(1)
 
-    media_type = selected_media["type"]
-    imdb_id = selected_media["id"]
-    media_name = selected_media["name"]
+        selected_media = items[0]
+        if args_opt.marathon:
+            for it in items:
+                if it["name"].lower() == raw_input_text.lower():
+                    selected_media = it
+                    break
+        elif len(items) > 1:
+            fzf_titles = []
+            for i, it in enumerate(items, 1):
+                type_icon = "Serie" if it["type"] == "series" else "Película"
+                year_str = f" \033[1;33m({it['year']})\033[0m" if it["year"] else ""
+                net_str = f" \033[1;35m[{it['network']}]\033[0m" if it["network"] else ""
+                fzf_titles.append(f"\033[1;36m[{i}]\033[0m \033[1;37m{it['name']}\033[0m{year_str}{net_str}  \033[0;36m[{type_icon}]\033[0m")
+
+            c_idx, used_fzf = select_with_fzf(
+                fzf_titles,
+                prompt=":: Elegir título: ",
+                header="Múltiples coincidencias | ↑↓ Navega | Escribe para filtrar | Enter = Seleccionar | Esc = Salir"
+            )
+            if used_fzf:
+                if c_idx is None:
+                    sys.exit(0)
+                selected_media = items[c_idx]
+            else:
+                log("\n\033[1;32m══════════════════════════════════════════════════════════════╗\033[0m")
+                log("\033[1;37m Títulos encontrados:                                         ║\033[0m")
+                log("\033[1;32m══════════════════════════════════════════════════════════════╝\033[0m")
+                for t_line in fzf_titles:
+                    log(f"  {t_line}")
+                log("\n\033[1;33mSelecciona el título [1]: \033[0m", end="")
+                choice = sys.stdin.readline().strip()
+                if choice.isdigit() and 1 <= int(choice) <= len(items):
+                    selected_media = items[int(choice) - 1]
+
+        media_type = selected_media["type"]
+        imdb_id = selected_media["id"]
+        media_name = selected_media["name"]
+        poster = selected_media.get("poster", "")
 
     season = 1
     episode = 1
@@ -322,17 +365,17 @@ def main():
             season = season_arg
             episode = episode_arg
         else:
-            log(f"\n\033[1;33m📅 Temporada [1]: \033[0m", end="")
+            log(f"\n\033[1;33m:: Temporada [1]: \033[0m", end="")
             s_inp = sys.stdin.readline().strip()
             season = int(s_inp) if s_inp.isdigit() else 1
 
-            log(f"\033[1;33m🔢 Capítulo [1]: \033[0m", end="")
+            log(f"\033[1;33m:: Capítulo [1]: \033[0m", end="")
             e_inp = sys.stdin.readline().strip()
             episode = int(e_inp) if e_inp.isdigit() else 1
 
-        log(f"\n\033[0;36m🔎 Obteniendo streams para {media_name} T{season:02d}E{episode:02d}...\033[0m")
+        log(f"\n\033[0;36m:: Obteniendo streams para {media_name} T{season:02d}E{episode:02d}...\033[0m")
     else:
-        log(f"\n\033[0;36m🔎 Obteniendo streams para película {media_name}...\033[0m")
+        log(f"\n\033[0;36m:: Obteniendo streams para película {media_name}...\033[0m")
 
     raw_streams = get_streams(media_type, imdb_id, season, episode)
     if not raw_streams:
@@ -345,63 +388,93 @@ def main():
             info = parse_stream_info(s)
             if not is_too_large_or_remux(info["title"], info["size"]):
                 parsed.append(info)
-    
-    # Ordenar con prioridad: 1º Latino 🇲🇽, 2º Castellano 🇪🇸, 3º Multi-Audio, 4º Subtitulado 💬, 5º Original
-    # En calidad: Prioridad absoluta a 1080p (estándar óptimo solicitado), luego 4K, luego 720p
+
     def sort_key(x):
         res_score = 0
         if x["res"] == "1080p":
             res_score = 2
         elif x["res"] == "4K":
             res_score = 1
-
         return (x.get("lang_score", 0), res_score, x["seeds"])
 
     parsed.sort(key=sort_key, reverse=True)
     top_streams = parsed[:25]
 
-    header = f"{media_name} (T{season:02d}E{episode:02d})" if media_type == "series" else media_name
-    fzf_stream_lines = []
-    for i, s in enumerate(top_streams, 1):
-        color_seed = "\033[0;32m" if s["seeds"] > 10 else "\033[1;33m" if s["seeds"] > 0 else "\033[0;31m"
-        res_color = "\033[1;35m" if s["res"] == "4K" else "\033[1;36m"
-        line = f"\033[1;36m[{i:2d}]\033[0m {s['lang_tag']} {res_color}[{s['res']}]\033[0m {s['platform_tag']}{color_seed}🌱 {s['seeds']:3d} seeds\033[0m  📦 \033[0;35m{s['size']:>9s}\033[0m  \033[1;37m{s['title'][:60]}\033[0m"
-        fzf_stream_lines.append(line)
-
-    c_idx, used_fzf = select_with_fzf(
-        fzf_stream_lines,
-        prompt="🔎 Filtrar versión/calidad: ",
-        header=f"Streams: {header} | ↑↓ Moverse | Escribe (ej. latino, 1080p, 4k, bluray) | Enter = Ver | Esc = Salir"
-    )
-
     chosen = None
-    if used_fzf:
-        if c_idx is None:
-            sys.exit(0)
-        chosen = top_streams[c_idx]
-    else:
-        log("\n\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m")
-        log(f"\033[1;37m Streams seguros para: \033[1;33m{header}\033[0m")
-        log("\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m\n")
-        for line in fzf_stream_lines:
-            log(f"  {line}\n")
-        log("\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m")
+    pref_group = (args_opt.group or "").strip().lower()
+    pref_res = (args_opt.res or "").strip().lower()
+    pref_lang_score = args_opt.lang_score if args_opt.lang_score is not None else (4 if args_opt.latino == 1 else None)
 
-        while True:
-            log("\033[1;33mSelecciona el stream a reproducir (o 'q' para salir): \033[0m", end="")
-            c = sys.stdin.readline().strip()
-            if c.lower() in ('q', 'quit', 'exit', ''):
+    if args_opt.marathon and top_streams:
+        # 1. Intentar coincidencia exacta con el grupo / encoder anterior (ej. FLUX, PSA, BTM, etc.)
+        if pref_group:
+            for s in top_streams:
+                s_title = s["title"].lower()
+                s_group = extract_group(s["title"]).lower()
+                if (pref_group == s_group or pref_group in s_title) and s["seeds"] > 0:
+                    chosen = s
+                    log(f"\n\033[1;32m:: Modo Maratón: Stream emparejado automáticamente por grupo '{pref_group.upper()}'\033[0m")
+                    log(f"\033[0;36m   ➔ {s['title'][:60]} [{s['res']}] ({s['seeds']} seeds)\033[0m\n")
+                    break
+
+        # 2. Si no hubo match por grupo, buscar por coincidencia de idioma y resolución
+        if not chosen and (pref_lang_score is not None or pref_res):
+            for s in top_streams:
+                match_lang = (pref_lang_score is None) or (s.get("lang_score", 0) >= pref_lang_score)
+                match_res = (not pref_res) or (s.get("res", "").lower() == pref_res)
+                if match_lang and match_res and s["seeds"] > 0:
+                    chosen = s
+                    log(f"\n\033[1;32m:: Modo Maratón: Stream emparejado automáticamente por calidad/idioma\033[0m")
+                    log(f"\033[0;36m   ➔ {s['title'][:60]} [{s['res']}] ({s['seeds']} seeds)\033[0m\n")
+                    break
+
+        # 3. Fallback maratón: primer stream disponible con semillas
+        if not chosen and top_streams and top_streams[0]["seeds"] > 0:
+            chosen = top_streams[0]
+            log(f"\n\033[1;32m:: Modo Maratón: Usando stream principal disponible\033[0m")
+            log(f"\033[0;36m   ➔ {chosen['title'][:60]} [{chosen['res']}] ({chosen['seeds']} seeds)\033[0m\n")
+
+    if not chosen:
+        header = f"{media_name} (T{season:02d}E{episode:02d})" if media_type == "series" else media_name
+        fzf_stream_lines = []
+        for i, s in enumerate(top_streams, 1):
+            color_seed = "\033[0;32m" if s["seeds"] > 10 else "\033[1;33m" if s["seeds"] > 0 else "\033[0;31m"
+            res_color = "\033[1;35m" if s["res"] == "4K" else "\033[1;36m"
+            line = f"\033[1;36m[{i:2d}]\033[0m {s['lang_tag']} {res_color}[{s['res']}]\033[0m {s['platform_tag']}{color_seed}{s['seeds']:3d} seeds\033[0m   \033[0;35m{s['size']:>9s}\033[0m  \033[1;37m{s['title'][:60]}\033[0m"
+            fzf_stream_lines.append(line)
+
+        c_idx, used_fzf = select_with_fzf(
+            fzf_stream_lines,
+            prompt=":: Filtrar versión/calidad: ",
+            header=f"Streams: {header} | ↑↓ Moverse | Escribe (ej. latino, 1080p, 4k) | Enter = Ver | Esc = Salir"
+        )
+
+        if used_fzf:
+            if c_idx is None:
                 sys.exit(0)
-            if c.isdigit() and 1 <= int(c) <= len(top_streams):
-                chosen = top_streams[int(c) - 1]
-                break
-            log("\033[0;31mOpción no válida. Ingresa un número de la lista.\033[0m")
+            chosen = top_streams[c_idx]
+        else:
+            log("\n\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m")
+            log(f"\033[1;37m Streams seguros para: \033[1;33m{header}\033[0m")
+            log("\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m\n")
+            for line in fzf_stream_lines:
+                log(f"  {line}\n")
+            log("\033[1;32m═══════════════════════════════════════════════════════════════════════\033[0m")
+
+            while True:
+                log("\033[1;33mSelecciona el stream a reproducir (o 'q' para salir): \033[0m", end="")
+                c = sys.stdin.readline().strip()
+                if c.lower() in ('q', 'quit', 'exit', ''):
+                    sys.exit(0)
+                if c.isdigit() and 1 <= int(c) <= len(top_streams):
+                    chosen = top_streams[int(c) - 1]
+                    break
+                log("\033[0;31mOpción no válida. Ingresa un número de la lista.\033[0m")
 
     if chosen:
         tr_query = "".join(f"&tr={urllib.parse.quote(t)}" for t in TRACKERS)
         magnet = f"magnet:?xt=urn:btih:{chosen['infoHash']}{tr_query}"
-        
-        # Extraer tamaño numérico en GB para selección de buffer inteligente
+
         size_gb = 0.0
         m_sz = re.search(r"([\d\.]+)\s*(GB|GiB|MB|MiB)", chosen.get("size", ""), re.IGNORECASE)
         if m_sz:
@@ -412,23 +485,27 @@ def main():
             else:
                 size_gb = val
 
-        # Emitir magnet, fileIdx, tamaño y metadatos para Discord
+        grp = extract_group(chosen['title']) or chosen.get('source', '')
         print(f"MAGNET:{magnet}")
         if chosen.get("fileIdx") is not None:
             print(f"FILEIDX:{chosen['fileIdx']}")
         print(f"SIZE_GB:{size_gb:.2f}")
         print(f"SIZE_STR:{chosen.get('size', 'N/A')}")
-        print(f"TITLE:{selected_media['name']}")
+        print(f"TITLE:{media_name}")
         print(f"TYPE:{media_type}")
         print(f"SEASON:{season}")
         print(f"EPISODE_NUM:{episode}")
+        print(f"IMDB_ID:{imdb_id}")
+        print(f"GROUP:{grp}")
+        print(f"RES:{chosen.get('res', '1080p')}")
+        print(f"LANG_SCORE:{chosen.get('lang_score', 0)}")
         print(f"HAS_LATINO:{1 if chosen.get('lang_score', 0) >= 3 else 0}")
         if media_type == "series":
             print(f"EPISODE:Temporada {season} • Episodio {episode}")
         else:
             print("EPISODE:Película")
-        if selected_media.get("poster"):
-            print(f"POSTER:{selected_media['poster']}")
+        if poster:
+            print(f"POSTER:{poster}")
         sys.stdout.flush()
 
 if __name__ == "__main__":

@@ -102,7 +102,11 @@ local function trigger_marathon_next()
         type = m.type or "anime",
         season = tonumber(m.season) or 1,
         next_ep = cur_ep + 1,
-        group = m.group or ""
+        group = m.group or "",
+        imdb_id = m.imdb_id or "",
+        res = m.res or "",
+        has_latino = tonumber(m.has_latino) or 0,
+        lang_score = tonumber(m.lang_score) or 0
     }
 
     write_json(MARATHON_NEXT_FILE, next_data)

@@ -151,6 +151,9 @@ local function save_progress()
     entry.size_gb = media.size_gb or entry.size_gb or 0
     entry.file_idx = media.file_idx or entry.file_idx or ""
     entry.mal_id = media.mal_id or entry.mal_id or 0
+    entry.imdb_id = media.imdb_id or entry.imdb_id or ""
+    entry.res = media.res or entry.res or ""
+    entry.lang_score = media.lang_score or entry.lang_score or 0
     local function extract_group(raw)
         if not raw or raw == "" then return "" end
         local g1 = raw:match("^%[(.-)%]")
